@@ -1,0 +1,11 @@
+AgentBreakoutDqn has option to save/load weights from action value and target neural nets when it's run all
+the episodes it's asked to run.
+
+I've added the saved weights from about 50 episodes. It definitely behaves differently if you load them, so appears to
+be learning.
+
+Things to do include...
+- Enable Replay memory
+- Include history in the state (t-1, t-2, t-3)
+- Batch up neural network updates
+- Identify what's using up memory
