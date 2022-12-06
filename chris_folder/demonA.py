@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from keras.models import Sequential
+from keras.models import Sequential, clone_model
 from keras.layers import Dense, Conv2D, Flatten
 from keras.optimizers import Adam
 
@@ -36,12 +36,17 @@ class ExperienceBuffer:
 
         return random.choices(self._data, k=batch_size)
 
+
 class NeuralNets:
+    """Neural network class to contain the netowrks for actions and
+    target network
+    """
 
     def __init__(self, env):
         self.outputs = env.action_space
+        self.num_actions = len(env.action_space)
 
-    def construct_av_network():
+    def construct_av_network(self):
         
         action_value_network = Sequential()
 
@@ -49,8 +54,21 @@ class NeuralNets:
         action_value_network.add(Conv2D(32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
         action_value_network.add(Flatten())
         action_value_network.add(Dense(256, activation='relu'))
-        action_value_network.add(Dense(4, activation='relu'))
+        action_value_network.add(Dense(self.num_actions, activation='relu'))
 
         # compile the model
         optimiser = Adam(learning_rate=0.001)
         action_value_network.compile(optimizer=optimiser, loss="mean_squared_error", metrics=['accuracy'])
+
+        return action_value_network
+
+class DQNAgent:
+    """Agent for Atari game DemoAttack using DQN"""
+        
+    self.q1 = construct_av_network()
+
+    # Create a fresh replica of the q1 model
+    q1_copy = clone_model(self.q1)
+
+    self.q2 = q1_copy.set_weights(self.q1.get_weights())
+
