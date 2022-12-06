@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from dqn_utils import ReplayMemory
+from dqn_utils import ReplayMemory, DataWithHistory
 
 
 class MemoryReplayTest(unittest.TestCase):
@@ -10,9 +10,12 @@ class MemoryReplayTest(unittest.TestCase):
         for i in range(8):
             replay_memory.add(f"state {i}", i % 4, i, f"state {i+1}", False)
 
-        self.assertEqual(8, replay_memory.size)
+        # Should have 3 empty history, plus the 8 added items
+        self.assertEqual(11, replay_memory.size)
 
-        data_entry = replay_memory.get_item(5)
+        # Get the 5th entry added (need to add 3 when selecting to account for the empty states that are
+        # added at the start as the history.)
+        data_entry = replay_memory.get_item(8)
         self.assertEqual(4, len(data_entry))
 
         # Check we got state 5, and 3 history items of states 4, 3 and 2
@@ -66,6 +69,32 @@ class MemoryReplayTest(unittest.TestCase):
         # last item should now be state new
         data_item = replay_memory.get_item(3)
         self.assertEqual(('state new', 1, 0, 'state next', True), data_item[0])
+
+
+class DataWithHistoryTest(unittest.TestCase):
+
+    def test_get_states(self):
+        data = [(f"state {i}", i % 4, i, f"state {i+1}", False) for i in range(4)]
+        data_with_history = DataWithHistory(data)
+
+        states = data_with_history.get_states()
+
+        self.assertEqual(['state 3', 'state 2', 'state 1', 'state 0'], states)
+
+
+    def test_get_states_with_terminated(self):
+        # mark 'state 1' as Terminated
+        data = [(f"state {i}", i % 4, i, f"state {i+1}", i == 1) for i in range(4)]
+
+        data_with_history = DataWithHistory(data)
+
+        states = data_with_history.get_states()
+
+        self.assertEqual('state 3', states[0])
+        self.assertEqual('state 2', states[1])
+        no_state = DataWithHistory.empty_state()
+        self.assertTrue(np.array_equal(no_state, states[2]))
+        self.assertTrue(np.array_equal(no_state, states[3]))
 
 
 
