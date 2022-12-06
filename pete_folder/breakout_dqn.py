@@ -4,43 +4,10 @@ import gym
 import numpy as np
 import random
 import math
-import tensorflow as tf
-from tensorflow import keras
+import keras
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten
-from collections import deque
-
-
-class ReplayMemory:
-    """ Maintain a memory of states and rewards from previous experience.
-
-    The replay_memory simply maintains a list of all the (state, action, reward, next_state) combinations encountered
-    while playing the game.
-    It can then return a random selection from this list.
-    As the list keeps being appended to, the random selections will eventually follow the same probability
-    distribution as the searching for the goal sees.
-    """
-    def __init__(self):
-        # TODO : Maybe cap the size of the file data?
-        self._data = deque()
-        self.size = 0
-        self.max_len = 1000
-
-    def add(self, state, action, reward, next_state, terminal):
-        if self.size >= self.max_len:
-            # don't grow bigger, just lose one off the front.
-            self.data.popleft()
-        else:
-            self.size += 1
-        self._data.append((state, action, reward, next_state, terminal))
-
-    def get_random_data(self, batch_size=1):
-        # get a random batch of data
-        #
-        # :param batch_size: Number of data elements - default 1
-        # :return: list of tuples of (state, action, reward, next_state)
-
-        return random.choices(self._data, k=batch_size)
+from dqn_utils import ReplayMemory
 
 
 class EGreedyPolicy:
@@ -93,9 +60,6 @@ class AgentBreakoutDqn:
         policy = EGreedyPolicy(exploratory_action_probability, q_func, possible_actions)
         replay_memory = ReplayMemory()
 
-        display_at = 5
-        best_reward = -1000000
-
         for episode in range(num_episodes):
             # Initialise S
             obs, info = env.reset()
@@ -112,6 +76,7 @@ class AgentBreakoutDqn:
                 # Take action A, observe R, S'
                 obs, reward, terminated, truncated, info = env.step(action)
                 next_state = self.reformat_observation(obs)
+                replay_memory.add(state, action, reward, next_state, terminated)
                 total_undiscounted_reward += reward
                 if terminated:
                     print(f"terminated in episode {episode} after {steps+1} steps. Total reward {total_undiscounted_reward}")
@@ -121,7 +86,10 @@ class AgentBreakoutDqn:
 
                 q_s_a = q_func.get_value(state, action)
                 discounted_next_q_s_a = discount_factor * q_func.get_target_value(next_state, next_action)
-                delta = step_size * (reward + discounted_next_q_s_a - q_s_a)
+                if terminated:
+                    delta = step_size * reward
+                else:
+                    delta = step_size * (reward + discounted_next_q_s_a - q_s_a)
                 #
                 q_func.update(action, state, delta)
 
@@ -129,7 +97,7 @@ class AgentBreakoutDqn:
 
                 clone_weights_count -= 1
                 if clone_weights_count <= 0:
-                    # every 30 steps clone the weights from the value to the target
+                    # every n steps clone the weights from the value to the target
                     q_func.clone_weights()
                     clone_weights_count = 30
 
@@ -140,14 +108,7 @@ class AgentBreakoutDqn:
                     break
 
             agent_rewards.append(total_undiscounted_reward)
-            best_reward = max(best_reward, total_undiscounted_reward)
 
-            # display_at -= 1
-            # if display_at <= 0:
-            #     print(f"{episode+1}: best_reward = {best_reward}")
-            #     display_at = 5
-
-        # print(f"Finished: best_reward = {best_reward}")
         if save_weights:
             q_func.save_weights()
 
@@ -169,13 +130,13 @@ class AgentBreakoutDqn:
 
 class FunctionApprox:
 
-    def __init__(self, actions, num_tiles=4, tile_sections=10):
+    def __init__(self, actions, batch_size=16):
         self.actions = actions
-        self.theta = {action: np.zeros(num_tiles*tile_sections*tile_sections) for action in actions}
-        self.tiles = []
         self.q_hat = self.build_cnn()
         self.q_hat_target = self.build_cnn()
         self.clone_weights()
+        self.batch_size = batch_size
+        self.batch = []
 
     def save_weights(self):
         self.q_hat.save_weights("q_hat.h5")
@@ -193,7 +154,7 @@ class FunctionApprox:
         # Crete CNN model to predict actions for states.
 
         cnn = Sequential()
-        # TODO : increase number of layers, maybe to 32
+        # TODO : Find the best arrangement for the ConvNet
         cnn.add(Conv2D(16, kernel_size=(4, 4), strides=(2, 2), activation='relu', input_shape=(8, 16, 1)))
         cnn.add(Conv2D(16, kernel_size=(2, 2), strides=(1, 1), activation='relu'))
         cnn.add(Flatten())
@@ -202,7 +163,7 @@ class FunctionApprox:
         # cnn.summary()
 
         # compile the model
-        optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        optimizer = keras.optimizers.Adam(learning_rate=0.001)
         cnn.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
 
         return cnn
@@ -225,13 +186,23 @@ class FunctionApprox:
         return np.argmax(prediction[0])
 
     def update(self, action, state, delta):
+        # do the update in batches
+        if len(self.batch) < self.batch_size:
+            self.batch.append((action, state, delta))
+            return
+
+        states = np.array([s for (a, s, d) in self.batch])
         # get current prediction
-        prediction = self.q_hat.predict(np.array([state]), verbose=False)
+        predictions = self.q_hat.predict(states, verbose=False)
 
-        # update value for specified action
-        prediction[0][action] = prediction[0][action] + delta
+        # update values for specified actions
+        for (action, _, delta), prediction in zip(self.batch, predictions):
+            prediction[action] = prediction[action] + delta
 
-        self.q_hat.fit(np.array([state]), np.array(prediction), epochs=1, batch_size=1, verbose=False)
+        self.q_hat.fit(states, predictions, epochs=1, batch_size=self.batch_size, verbose=False)
+
+        # clear the batch.
+        self.batch = []
 
 import time
 class Timer:
@@ -262,15 +233,15 @@ def main():
     best_reward = 0
     timer = Timer()
     timer.start("total time")
-    # env = gym.make("ALE/Breakout-v5", obs_type="ram")
-    env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
-    for i in range(1):
+    env = gym.make("ALE/Breakout-v5", obs_type="ram")
+    # env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
+    for i in range(10):
         inner_timer = Timer()
         inner_timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
         agent = AgentBreakoutDqn()
-        rewards = agent.train(env, num_episodes=5, load_weights=False, save_weights=False)
+        rewards = agent.train(env, num_episodes=5, load_weights=True, save_weights=True)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)

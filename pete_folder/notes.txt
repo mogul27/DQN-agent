@@ -9,3 +9,5 @@ Things to do include...
 - Include history in the state (t-1, t-2, t-3)
 - Batch up neural network updates
 - Identify what's using up memory
+
+https://github.com/mogul27/DQN-agent
