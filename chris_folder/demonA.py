@@ -2,6 +2,7 @@ import gym
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten
+from keras.optimizers import Adam
 
 env = gym.make("ALE/DemonAttack-v5", render_mode='human')
 env.reset()
@@ -51,7 +52,7 @@ class NeuralNets:
         action_value_network.add(Dense(4, activation='relu'))
 
         # compile the model
-        optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-        cnn.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        optimiser = Adam(learning_rate=0.001)
+        action_value_network.compile(optimizer=optimiser, loss="mean_squared_error", metrics=['accuracy'])
 
 
