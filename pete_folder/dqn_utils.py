@@ -11,7 +11,7 @@ class ReplayMemory:
     It can then return a random selection from this list, and ass the memory is contiguous it can return the
     recent history too.
     """
-    def __init__(self, max_len=1000, history=3):
+    def __init__(self, max_len=10000, history=3):
         """
         :param max_len: The amount of items to hold in the memory
         :param history: Amount of history to include with each data entry returned : default 3
@@ -24,7 +24,7 @@ class ReplayMemory:
         self.history = history
         for _ in range(history):
             # Add some empty states to fill up the history to start.
-            self.add(DataWithHistory.empty_state(), 0, 0, DataWithHistory, False)
+            self._data.append((DataWithHistory.empty_state(), 0, 0, DataWithHistory.empty_state(), False))
 
     def add(self, state, action, reward, next_state, terminated):
         if self.size >= self.max_len:
@@ -36,11 +36,16 @@ class ReplayMemory:
 
     def get_item(self, index):
         """ Get a specific item from the replay memory along with the specified amount of history
-        """
-        if index < self.history:
-            raise ValueError(f"Not enough history available for index {index}")
 
-        return [self._data[i] for i in range(index - self.history,index + 1)]
+        :return: A DataWithHistory object
+        """
+
+        return DataWithHistory([self._data[i] for i in range(index, index + self.history + 1)])
+
+    def get_last_item(self):
+        """ Get the last item added
+        """
+        return self.get_item(self.size - 1)
 
     def get_batch(self, batch_size=1):
         """ get a batch of data entries. Returns a list of batch_size data items.
@@ -50,15 +55,14 @@ class ReplayMemory:
         :param batch_size: Number of data entries : default 1
         :return: list of lists of tuples of (state, action, reward, next_state)
         """
-        if self.size < self.history + 1:
-            raise ValueError(f"Not enough history available to be able to retrieve data. Size = {self.size}")
 
-        batch = [self.get_item(random.randrange(self.history, self.size)) for i in range(batch_size)]
+        batch = [self.get_item(random.randrange(0, self.size)) for i in range(batch_size)]
 
         return batch
 
 
 class DataWithHistory:
+    # TODO : add some constants for the field names.
 
     def __init__(self, data):
         """ data should be a list of (state, action, reward, next_state, terminated)
@@ -76,7 +80,7 @@ class DataWithHistory:
         no_state = np.zeros(128).reshape(8, 16)
         return no_state
 
-    def get_states(self, state_field=0):
+    def _states(self, state_field=0):
         states = None
         history_terminated = False
         for item in self.data:
@@ -90,9 +94,22 @@ class DataWithHistory:
                     states.append(item[state_field])
         return states
 
-    def get_next_states(self):
+    def get_state(self):
+        return self._states(0)
+
+    def get_action(self):
+        return self.data[0][1]
+
+    def get_reward(self):
+        return self.data[0][2]
+
+    def get_next_state(self):
         # next_state is the 4th field, so pass in index of 3
-        return self.get_states(3)
+        return self._states(3)
+
+    def is_terminated(self):
+        return self.data[0][4]
+
 
 
 

@@ -4,7 +4,9 @@ import gym
 import numpy as np
 import random
 import math
+import gc
 import keras
+from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten
 from dqn_utils import ReplayMemory
@@ -42,63 +44,92 @@ class EGreedyPolicy:
 
 class AgentBreakoutDqn:
 
-    def train(self, env, num_episodes=10, step_size=0.5, discount_factor=0.9, exploratory_action_probability=0.05,
-              save_weights=False, load_weights=False):
+    def __init__(self, load_weights=False, exploratory_action_probability=0.05):
+        """ Set up the FunctionApprox and policy so that training runs keep using the same.
+
+        :param load_weights:
+        :param exploratory_action_probability:
+        """
+        possible_actions = [0, 1, 2, 3]
+
+        self.q_func = FunctionApprox(possible_actions)
+        if load_weights:
+            self.q_func.load_weights()
+        self.policy = EGreedyPolicy(exploratory_action_probability, self.q_func, possible_actions)
+        self.replay_memory = ReplayMemory(history=0)
+
+    def train(self, env, num_episodes=10, step_size=0.5, discount_factor=0.9,
+              save_weights=False, ):
         # Implementation of the Sarsa algorithm
         # Algorithm parameters can be supplied to the train method, but defaults are:
         #   step_size (alpha) = 0.2
         #   discount_factor (gamma) = 0.9
         #   exploratory_action_probability (epsilon) > 0.15
         #   num_episodes = 150
-
-        possible_actions = [0, 1, 2, 3]
         agent_rewards = []
-
-        q_func = FunctionApprox(possible_actions)
-        if load_weights:
-            q_func.load_weights()
-        policy = EGreedyPolicy(exploratory_action_probability, q_func, possible_actions)
-        replay_memory = ReplayMemory()
 
         for episode in range(num_episodes):
             # Initialise S
             obs, info = env.reset()
+            # TODO : add the history to the state.
             state = self.reformat_observation(obs)
+            state_with_history = [state]
+            # Choose A from S using policy derived from Q
+            action, _ = self.policy.select_action(state_with_history)
+
             total_undiscounted_reward = 0
             terminated = False
             truncated = False
-            # Choose A from S using policy derived from Q
-            action, _ = policy.select_action(state)
+
             steps = 0
-            clone_weights_count = 20
+            # bring the target and action value weights into sync after this many steps.
+            clone_weights_count = 30
+            # number of items to replay in addition to the response from env.step
+            replay_num = 3
 
             while not terminated and not truncated:
+
                 # Take action A, observe R, S'
                 obs, reward, terminated, truncated, info = env.step(action)
+                # TODO : add the history to the state.
                 next_state = self.reformat_observation(obs)
-                replay_memory.add(state, action, reward, next_state, terminated)
+                next_state_with_history = [next_state]
+                # Choose A' from S' using policy derived from q_func
+                next_action, _ = self.policy.select_action(next_state_with_history)
+
+                self.replay_memory.add(state, action, reward, next_state, terminated)
                 total_undiscounted_reward += reward
                 if terminated:
-                    print(f"terminated in episode {episode} after {steps+1} steps. Total reward {total_undiscounted_reward}")
-
-                # Choose A' from S' using policy derived from q_func
-                next_action, _ = policy.select_action(next_state)
-
-                q_s_a = q_func.get_value(state, action)
-                discounted_next_q_s_a = discount_factor * q_func.get_target_value(next_state, next_action)
-                if terminated:
-                    delta = step_size * reward
-                else:
-                    delta = step_size * (reward + discounted_next_q_s_a - q_s_a)
-                #
-                q_func.update(action, state, delta)
+                    print(f"terminated in episode {episode} after {steps+1} steps. "
+                          f"Total reward {total_undiscounted_reward}")
 
                 state, action = next_state, next_action
+
+                batch = self.replay_memory.get_batch(replay_num)
+                # TODO : seems useful to add itself, but is it really
+                batch.append(self.replay_memory.get_last_item())
+                for data_item in batch:
+
+                    # Choose A' from S' using policy derived from q_func
+                    s = data_item.get_state()
+                    a = data_item.get_action()
+                    r = data_item.get_reward()
+                    next_s = data_item.get_next_state()
+                    next_a, _ = self.policy.select_action(next_s)
+
+                    q_s_a = self.q_func.get_value(data_item.get_state(), data_item.get_action())
+                    discounted_next_q_s_a = discount_factor * self.q_func.get_target_value(next_s, next_a)
+                    if data_item.is_terminated():
+                        delta = step_size * r
+                    else:
+                        delta = step_size * (r + discounted_next_q_s_a - q_s_a)
+                    #
+                    self.q_func.update(a, s, delta)
 
                 clone_weights_count -= 1
                 if clone_weights_count <= 0:
                     # every n steps clone the weights from the value to the target
-                    q_func.clone_weights()
+                    self.q_func.clone_weights()
                     clone_weights_count = 30
 
 
@@ -110,7 +141,7 @@ class AgentBreakoutDqn:
             agent_rewards.append(total_undiscounted_reward)
 
         if save_weights:
-            q_func.save_weights()
+            self.q_func.save_weights()
 
         return agent_rewards
 
@@ -119,15 +150,29 @@ class AgentBreakoutDqn:
         new_shape = np.array(obs).reshape(8, 16)
         return new_shape / 256
 
+    def release_memory(self):
+        """ The keras models created in FunctionApprox seem to hang onto memory even after they've gone out of scope.
+        Try and force the clean up of the memory."""
+        self.q_func.release_memory()
+
+
 class FunctionApprox:
 
-    def __init__(self, actions, batch_size=16):
+    def __init__(self, actions, update_batch_size=16):
         self.actions = actions
         self.q_hat = self.build_cnn()
         self.q_hat_target = self.build_cnn()
         self.clone_weights()
-        self.batch_size = batch_size
+        self.update_batch_size = update_batch_size
         self.batch = []
+
+    def release_memory(self):
+        """ The keras models created seem to hang onto memory even after they've gone out of scope. Try and force
+        the clean up of the memory."""
+        del self.q_hat
+        del self.q_hat_target
+        gc.collect()
+        K.clear_session()
 
     def save_weights(self):
         self.q_hat.save_weights("q_hat.h5")
@@ -159,30 +204,26 @@ class FunctionApprox:
 
         return cnn
 
-    def extract_features_for_state(self, state):
-        (position, velocity) = state
-        tile_features = [tile.extract_feature(position, velocity) for tile in self.tiles]
-        return np.concatenate(tile_features)
-
     def get_value(self, state, action):
-        prediction = self.q_hat.predict_on_batch(np.array([state]))
+        prediction = self.q_hat.predict_on_batch(np.array(state))
         return prediction[0][action]
 
     def get_target_value(self, state, action):
-        prediction = self.q_hat_target.predict_on_batch(np.array([state]))
+        prediction = self.q_hat_target.predict_on_batch(np.array(state))
         return prediction[0][action]
 
     def best_action_for(self, state):
-        prediction = self.q_hat.predict_on_batch(np.array([state]))
+        prediction = self.q_hat.predict_on_batch(np.array(state))
         return np.argmax(prediction[0])
 
     def update(self, action, state, delta):
         # do the update in batches
-        if len(self.batch) < self.batch_size:
+        if len(self.batch) < self.update_batch_size:
             self.batch.append((action, state, delta))
             return
 
-        states = np.array([s for (a, s, d) in self.batch])
+        # TODO : work out how to handle multiple states (i.e. the history) correctly
+        states = np.array([s[0] for (a, s, d) in self.batch])
         # get current prediction
         predictions = self.q_hat.predict_on_batch(states)
 
@@ -190,7 +231,7 @@ class FunctionApprox:
         for (action, _, delta), prediction in zip(self.batch, predictions):
             prediction[action] = prediction[action] + delta
 
-        self.q_hat.fit(states, predictions, epochs=1, batch_size=self.batch_size, verbose=False)
+        self.q_hat.fit(states, predictions, epochs=1, batch_size=self.update_batch_size, verbose=False)
 
         # clear the batch.
         self.batch = []
@@ -226,13 +267,13 @@ def main():
     timer.start("total time")
     env = gym.make("ALE/Breakout-v5", obs_type="ram")
     # env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
-    for i in range(50):
+    agent = AgentBreakoutDqn(load_weights=True)
+    for i in range(3):
         inner_timer = Timer()
         inner_timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
-        agent = AgentBreakoutDqn()
-        rewards = agent.train(env, num_episodes=10, load_weights=True, save_weights=True)
+        rewards = agent.train(env, num_episodes=10, save_weights=True)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)
@@ -244,6 +285,7 @@ def main():
         inner_timer.display()
 
     env.close()
+    agent.release_memory()
     timer.end("total time")
     timer.display()
 
