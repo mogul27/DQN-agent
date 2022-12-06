@@ -116,16 +116,7 @@ class AgentBreakoutDqn:
 
     def reformat_observation(self, obs):
         # Change from array of 128 values of 0-255 to 16x8 of 0-1
-        new_shape = np.array([
-            obs[0:16],
-            obs[16:32],
-            obs[32:48],
-            obs[48:64],
-            obs[64:80],
-            obs[80:96],
-            obs[96:112],
-            obs[112:128],
-        ])
+        new_shape = np.array(obs).reshape(8, 16)
         return new_shape / 256
 
 class FunctionApprox:
@@ -174,15 +165,15 @@ class FunctionApprox:
         return np.concatenate(tile_features)
 
     def get_value(self, state, action):
-        prediction = self.q_hat.predict(np.array([state]), verbose=False)
+        prediction = self.q_hat.predict_on_batch(np.array([state]))
         return prediction[0][action]
 
     def get_target_value(self, state, action):
-        prediction = self.q_hat_target.predict(np.array([state]), verbose=False)
+        prediction = self.q_hat_target.predict_on_batch(np.array([state]))
         return prediction[0][action]
 
     def best_action_for(self, state):
-        prediction = self.q_hat.predict(np.array([state]), verbose=False)
+        prediction = self.q_hat.predict_on_batch(np.array([state]))
         return np.argmax(prediction[0])
 
     def update(self, action, state, delta):
@@ -193,7 +184,7 @@ class FunctionApprox:
 
         states = np.array([s for (a, s, d) in self.batch])
         # get current prediction
-        predictions = self.q_hat.predict(states, verbose=False)
+        predictions = self.q_hat.predict_on_batch(states)
 
         # update values for specified actions
         for (action, _, delta), prediction in zip(self.batch, predictions):
@@ -235,13 +226,13 @@ def main():
     timer.start("total time")
     env = gym.make("ALE/Breakout-v5", obs_type="ram")
     # env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
-    for i in range(10):
+    for i in range(50):
         inner_timer = Timer()
         inner_timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
         agent = AgentBreakoutDqn()
-        rewards = agent.train(env, num_episodes=5, load_weights=True, save_weights=True)
+        rewards = agent.train(env, num_episodes=10, load_weights=True, save_weights=True)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)
