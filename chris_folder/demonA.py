@@ -54,5 +54,3 @@ class NeuralNets:
         # compile the model
         optimiser = Adam(learning_rate=0.001)
         action_value_network.compile(optimizer=optimiser, loss="mean_squared_error", metrics=['accuracy'])
-
-
