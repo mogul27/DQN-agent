@@ -1,18 +1,15 @@
-
-
 import gym
-import seaborn as sns
 import matplotlib.pyplot as plt
-import tensorflow as tf
-import keras
+#import tensorflow as tf
 import numpy as np
-from collections import defaultdict
 from keras.models import Sequential     # ver 2.9.0
-from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D, Input
+from keras.layers import Dense, Conv2D, Flatten, MaxPooling2D
+import time
+
 
 
 # Create the environment
-env = gym.make('ALE/Breakout-v5', render_mode="human")
+env = gym.make('ALE/Breakout-v5', render_mode=None)
 
 
 # test the environment 
@@ -24,27 +21,29 @@ observation, info = env.reset(seed=42)
 #         observation, info = env.reset()
 
 
+#TODO: use train_batch and predict_batch
+#TODO: implement frame skipping
+#TODO: read the deepmind papar once more.
 
 
 def DQN(env):
-    n_episodes = 300
-    n_actions = env.action_space.n # get the number of possible actions
+    SAVE_MODELS = False
+    n_episodes = 1000
     score_history =  np.zeros(n_episodes)
-    #policy = defaultdict(lambda _ : np.ones * 1/ n_actions) # create an equiprobable policy for each unseen state.
     
     gamma = 0.98
     eps = 0.15
 
-    n_replays = 5
+    n_replays = 20
     
     # intialize buffer B for experiece replay
-    b_cap = 1000
+    b_cap = 5000
     b_idx = 0
     b_full = False # flag to idicate whether the buffer has reached its capacity
     B =  [() for _ in range(b_cap)]
     
     # intialize Q_hat network
-    q_net = keras.models.Sequential()
+    q_net = Sequential()
     q_net.add(Conv2D(32, (4,4), strides=(4,4), activation='relu', input_shape=(210,160,3)))
     q_net.add(Conv2D(64, (4,4), strides=(4,4), activation='relu'))
     q_net.add(Conv2D(64, (4,4), strides=(4,4), activation='relu'))
@@ -55,7 +54,7 @@ def DQN(env):
     w = q_net.get_weights()
 
     # intiliaze Target net. I could probably just clone the net above.
-    target_net = keras.models.Sequential()
+    target_net = Sequential()
     target_net.add(Conv2D(32, (4,4), strides=(4,4), activation='relu', input_shape=(210,160,3)))
     target_net.add(Conv2D(64, (4,4), strides=(4,4), activation='relu'))
     target_net.add(Conv2D(64, (4,4), strides=(4,4), activation='relu'))
@@ -65,20 +64,23 @@ def DQN(env):
     target_net.compile(optimizer="adam", loss="mean_squared_error",metrics = "mean_squared_error")
     target_net.set_weights(w) # make the target network the same as the q_network
     
-    sync_steps = 30
+    sync_steps = 100
     n_steps = 0
-
+    
+    time_start  = time.time()
     for episode in range(n_episodes):
         state, info = env.reset()
-        if episode % 5 == 0:
-            model_name = "q_net_" + str(episode) + "_.h5"
+        if episode % 20 == 0 and SAVE_MODELS:
+            model_name = "q_net_" + str(episode) + ".h5"
             q_net.save(model_name) # save the q_network model every 20 episodes.
 
         terminal = False
         score = 0
+        lives = info['lives']
+        ep_steps = 0
         while not terminal:
             n_steps += 1
-
+            ep_steps +=1
             if n_steps % sync_steps == 0: # syncronize the weigths of the target model with the q_net every [sync_steps]
                 w = q_net.get_weights()
                 target_net.set_weights(w)
@@ -88,6 +90,9 @@ def DQN(env):
             action = get_action(env, q_net,state.reshape(1,210,160,3), eps)
             #print(f'Action: {action}')
             observation, reward, terminal, truncated, info = env.step(action)
+            if info['lives'] < lives: #  every time a life is lost give a reward of -1.
+                reward = -1
+            lives = info['lives']
             score += reward
 
             #store observations in buffer.
@@ -96,38 +101,48 @@ def DQN(env):
                     print("Buffer reached capacity") 
                 b_idx = 0
                 b_full = True
-            B[b_idx] =  (state.reshape(1,210,160,3), action, observation.reshape(1,210,160,3), reward, terminal)
+            B[b_idx] =  (state.reshape(1,210,160,3), action, observation.reshape(1,210,160,3), reward, int(not terminal))
             b_idx +=1
 
             # update weights with the observation deriving from the current action
-            update_weights(q_net, target_net, gamma, state.reshape(1,210,160,3), action, observation.reshape(1,210,160,3), reward, terminal) 
-
+            update_weights(q_net, target_net, gamma, state.reshape(1,210,160,3), action, observation.reshape(1,210,160,3), reward, int(not terminal)) 
             # experience replay: performe temporaly uncorrelated elarning from k experiecese in the buffer
-            for _ in range(n_replays):  # TODO: I could limit the nuber of replay when the buffer containes fewer number of experiences than the default number of replays
-                rand_idx = np.random.randint(0, max(b_idx, b_full* len(B))) # this can be otpimized, (it's a waste calcualting the len every time)
-                s, a, observed_s, r, term = B[rand_idx]
-                update_weights(q_net, target_net, gamma, s, a, observed_s, r, term)
+           #TODO: I could limit the nuber of replay when the buffer containes fewer number of experiences than the default number of replays
+            batch_idxs =  np.random.randint(0, max(b_idx, b_full* len(B)), n_replays )
+            s = []; a = [];  obs = []; r = []; t = []
+            [[s.append(B[i][0]), a.append(B[i][1]), obs.append(B[i][2]), r.append(B[i][3]), t.append(B[i][4])] for i in batch_idxs]
+            #s_batch = np.concatenate([B[i][0] for i in batch_idxs], axis=0)
+            #action_batch = np.array([B[i][1] for i in batch_idxs])
+            #obeservation_batch = np.concatenate([B[i][2] for i in batch_idxs], axis=0) 
+            #reward_batch = np.array([B[i][3] for i in batch_idxs])
+            #terminal_batch = np.array([B[i][4] for i in batch_idxs])
+            s_batch = np.concatenate(s,axis=0)
+            action_batch = np.array(a)
+            obeservation_batch = np.concatenate(obs,axis=0)
+            reward_batch = np.array(r)
+            terminal_batch = np.array(t)
+            update_weights(q_net, target_net, gamma, s_batch, action_batch, obeservation_batch, reward_batch, terminal_batch)  
 
-                
-        print(f"Episode: {episode}, Total undiscouted reward = {score}")
+
+        step_hour =   round(n_steps/((time.time()-time_start)/3600),0)      
+        print(f"Episode: {episode}, Total undiscouted reward = {score}, steps = {ep_steps},  steps/hour = {step_hour}")
         score_history[episode] = score
     return q_net, score_history
 
 
-def update_weights(q_net, target_net,gamma, s, a, observed_s, r, terminal):
+def update_weights(q_net, target_net,gamma, s, a, observed_s, r, not_terminal):
     # use the target net to compute the update target
-    y = r +  (not terminal) * gamma * np.max(target_net.predict(observed_s, verbose=0))
+    y = r +  not_terminal * gamma * np.max(target_net.predict_on_batch(observed_s), axis=1)
  
     # use the q net to compute the estimated q values for all actions during the forward pass
-    y_hat = q_net.predict(s, verbose=0)
+    y_hat = q_net.predict_on_batch(s)
 
     # overwirte the value for the taken action with the future expected return calculated by the target net
-    y_hat[0][a] = y 
-
+    y_hat[range(y_hat.shape[0]),a] = y
     # during the backward pass, update the weights of the net to reduce the rmse.
     # NOTE: only the action value for the current action  will contribute to the loss.
     # therefore the weights will be adjusted accordingly
-    q_net.fit(s,y_hat, verbose=0) # TODO Instead of fitting the results of each replay independently, I could first simaulte all the rreply then fit the network cosidering all datapoints at once. It should be more effient
+    q_net.train_on_batch(s,y_hat) # TODO Instead of fitting the results of each replay independently, I could first simaulte all the rreply then fit the network cosidering all datapoints at once. It should be more effient
 
 
 
@@ -137,7 +152,7 @@ def get_action(env, q_net, state, eps,): # This can be made more efficient. draw
     if p <= eps:
         action = env.action_space.sample()
     else:
-        q_vals= q_net.predict(state, verbose=0)
+        q_vals= q_net.predict_on_batch(state)
         action = np.argmax(q_vals)
     return action
 
