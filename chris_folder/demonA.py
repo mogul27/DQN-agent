@@ -1,12 +1,11 @@
 import gym
 import numpy as np
+import random
 from keras.models import Sequential, clone_model
 from keras.layers import Dense, Conv2D, Flatten
 from keras.optimizers import Adam
 from collections import deque
 
-env = gym.make("ALE/DemonAttack-v5", render_mode='human')
-env.reset()
 
 class ExperienceBuffer:
     """ Maintain a memory of states and rewards from previous experience.
@@ -47,13 +46,13 @@ class DQNAgent:
         self.epsilon = epsilon
         self.gamma=gamma
 
-    def construct_av_network(self, num_actions: int):
+    def construct_av_network(self, num_actions: int, state_dims: tuple):
         """Construct a neural network for producing actions in 
         the environment"""
-        
+
         action_value_network = Sequential()
 
-        action_value_network.add(Conv2D(16, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(8, 16, 1)))
+        action_value_network.add(Conv2D(16, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
         action_value_network.add(Conv2D(32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
         action_value_network.add(Flatten())
         action_value_network.add(Dense(256, activation='relu'))
@@ -65,14 +64,14 @@ class DQNAgent:
 
         return action_value_network
 
-    def initialise_network_buffer(self, num_actions: int):
+    def initialise_network_buffer(self, num_actions: int, state_dims: tuple):
         """Create the networks and experience buffer for 
         a DQN agent"""
 
         # Initialise Experience Buffer D
         self.experience_buffer = ExperienceBuffer(self.max_buffer_len)
 
-        self.q1 = self.construct_av_network(num_actions)
+        self.q1 = self.construct_av_network(num_actions, state_dims)
         # Create a fresh replica of the q1 model
         q1_copy = clone_model(self.q1)
 
@@ -80,23 +79,27 @@ class DQNAgent:
         # facing mismatch issues when using initialisation algorithms
         self.q2 = q1_copy.set_weights(self.q1.get_weights())
 
-    def get_q1_a_star(self):
+    def get_q1_a_star(self, state):
         """Retrieve best action to take in current state (a*)"""
-        pass
+        q_vals= self.q1.predict(state)
+        print(q_vals)
+        a_star = np.argmax(q_vals)
+
+        return a_star
     
-    def epsilon_greedy_selection(self, num_actions: int, possible_actions: list):
+    def epsilon_greedy_selection(self, num_actions: int, possible_actions: list, state):
+        """Choose action A in state S using policy derived from q1(S,.,theta)"""
 
         # Copy to avoid overwriting possible actions elsewhere
         valid_actions = possible_actions.copy()
         # Select A* or other action with epsilon-greedy policy
         a_star_chance = 1-self.epsilon + (self.epsilon/num_actions)
-        lower_valued_chance = self.epsilon/num_actions
 
         # Generate a float for which epsilon will function as a threshold
         generated_float = np.random.rand()
 
         # Calculate best action estimate (a_star)
-        a_star = self.get_q1_a_star()
+        a_star = self.get_q1_a_star(state)
 
         if generated_float < a_star_chance:
             state_action = a_star
@@ -111,23 +114,30 @@ class DQNAgent:
 def main():
 
     # Set algorithm parameters
-    experience_buffer_size = 500
+    experience_buffer_size = 1000000
     epsilon = 0.15
     gamma = 0.9
 
 
     # Initialise a new environment
-    env = gym.make("ALE/DemonAttack-v5", render_mode='human')
-    prev_state = env.reset()
+    env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
+    # Apply preprocessing from original DQN paper including greyscale and cropping
+    wrapped_env = gym.wrappers.AtariPreprocessing(env)
+    prev_state = wrapped_env.reset()
 
-    # Collect info about environment actions for constructing network outputs
-    num_actions = env.action_space.n
-    print(num_actions)
+    # Collect info about environment and actions for constructing network outputs
+    num_actions = wrapped_env.action_space.n
     possible_actions = [n for n in range(num_actions)]
+    state_dims = wrapped_env.observation_space.shape
+    # Concatenate 1 to state dims to represent the number of channels
+    # which is 1 because greyscale images used
+    state_dims = state_dims + (1,)
+    print("State Dims:", state_dims)
+    print(type(state_dims))
     
     # Initialise a new DQNAgent
     agent = DQNAgent(epsilon=epsilon, max_buffer_len=experience_buffer_size, gamma=gamma)
-    agent.initialise_network_buffer(num_actions)
+    agent.initialise_network_buffer(num_actions, state_dims)
 
     # Set terminal to False initially for looping
     terminal=False
@@ -135,13 +145,14 @@ def main():
     # Fill replay buffer sith initial random wandering
     for _ in range(experience_buffer_size):
         action = np.random.choice(possible_actions)
-        next_state, reward, terminal, _, _ = env.step(action)
+        next_state, reward, terminal, _, _ = wrapped_env.step(action)
         # Add experience to the buffer
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
 
     # Reset emnvironment now that replay buffer filled
     env = gym.make("ALE/DemonAttack-v5", render_mode='human')
-    prev_state = env.reset()
+    wrapped_env = gym.wrappers.AtariPreprocessing(env)
+    prev_state = wrapped_env.reset()
     terminal = False
 
     while not terminal:
