@@ -57,6 +57,8 @@ class AgentBreakoutDqn:
             self.q_func.load_weights()
         self.policy = EGreedyPolicy(exploratory_action_probability, self.q_func, possible_actions)
         self.replay_memory = ReplayMemory(history=0)
+        self.max_delta = None
+        self.min_delta = None
 
     def train(self, env, num_episodes=10, step_size=0.5, discount_factor=0.9,
               save_weights=False, ):
@@ -80,6 +82,8 @@ class AgentBreakoutDqn:
             total_undiscounted_reward = 0
             terminated = False
             truncated = False
+            self.max_delta = None
+            self.min_delta = None
 
             steps = 0
             # bring the target and action value weights into sync after this many steps.
@@ -122,6 +126,7 @@ class AgentBreakoutDqn:
         if save_weights:
             self.q_func.save_weights()
 
+        print(f"max delta = {self.max_delta}, mmin delta = {self.min_delta}")
         return agent_rewards
 
     def replay_steps(self, discount_factor, step_size, replay_num=3):
@@ -144,13 +149,21 @@ class AgentBreakoutDqn:
             next_s = data_item.get_next_state()
             next_a, _ = self.policy.select_action(next_s)
 
-            q_s_a = self.q_func.get_value(data_item.get_state(), data_item.get_action())
+            q_s_a = self.q_func.get_value(s, a)
             discounted_next_q_s_a = discount_factor * self.q_func.get_target_value(next_s, next_a)
             if data_item.is_terminated():
                 delta = step_size * r
             else:
                 delta = step_size * (r + discounted_next_q_s_a - q_s_a)
             #
+            if self.max_delta is None:
+                self.max_delta = delta
+            else:
+                self.max_delta = max(self.max_delta, delta)
+            if self.min_delta is None:
+                self.min_delta = delta
+            else:
+                self.min_delta = min(self.min_delta, delta)
             self.q_func.update(a, s, delta)
 
     def reformat_observation(self, obs):
@@ -202,13 +215,13 @@ class FunctionApprox:
         cnn.add(Conv2D(16, kernel_size=(4, 4), strides=(2, 2), activation='relu', input_shape=(8, 16, 1)))
         cnn.add(Conv2D(16, kernel_size=(2, 2), strides=(1, 1), activation='relu'))
         cnn.add(Flatten())
-        cnn.add(Dense(32, activation='relu'))
-        cnn.add(Dense(4, activation='relu'))
+        cnn.add(Dense(10, activation='relu'))
+        cnn.add(Dense(4, activation=None))
         # cnn.summary()
 
         # compile the model
         optimizer = keras.optimizers.Adam(learning_rate=0.001)
-        cnn.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        cnn.compile(loss="mean_squared_error", optimizer=optimizer)
 
         return cnn
 
@@ -239,7 +252,7 @@ class FunctionApprox:
         for (action, _, delta), prediction in zip(self.batch, predictions):
             prediction[action] = prediction[action] + delta
 
-        self.q_hat.fit(states, predictions, epochs=1, batch_size=self.update_batch_size, verbose=False)
+        self.q_hat.train_on_batch(states, predictions)
 
         # clear the batch.
         self.batch = []
@@ -273,15 +286,15 @@ def main():
     best_reward = 0
     timer = Timer()
     timer.start("total time")
-    # env = gym.make("ALE/Breakout-v5", obs_type="ram")
-    env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
-    agent = AgentBreakoutDqn(load_weights=True)
-    for i in range(1):
+    env = gym.make("ALE/Breakout-v5", obs_type="ram")
+    # env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
+    agent = AgentBreakoutDqn(load_weights=False)
+    for i in range(5):
         inner_timer = Timer()
         inner_timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
-        rewards = agent.train(env, num_episodes=1, save_weights=True)
+        rewards = agent.train(env, num_episodes=10, save_weights=False)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)
