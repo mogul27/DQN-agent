@@ -212,7 +212,8 @@ def main():
             else:
                 # Retrieve best possible action according to target network
                 target_preds[0][action_exp] = reward_exp + gamma*best_action_val
-            
+
+
             # Reshape prev_state to be passed into network
             # Previous states sampled may be a different shape/type
 
@@ -227,6 +228,8 @@ def main():
 # y is target because that's what the target network does (actual answer)
 # y_hat is your attempt at it
 
-
+            # OFf-policy so replacing says here's what you could do in that state
+            # It's S' so it's the best possible path from that action
+            # update to move closer to the value possible from the next state if you take that action
 
 main()
