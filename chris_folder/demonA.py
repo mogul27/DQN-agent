@@ -16,7 +16,7 @@ class ExperienceBuffer:
     """
 
     def __init__(self, max_buffer_len: int):
-        self._data = deque()
+        self.data = deque()
         self.size = 0
         self.max_len = max_buffer_len
 
@@ -26,7 +26,7 @@ class ExperienceBuffer:
             self.data.popleft()
         else:
             self.size += 1
-        self._data.append((state, action, reward, next_state, terminal))
+        self.data.append((state, action, reward, next_state, terminal))
 
     def get_random_data(self, batch_size=1):
         # get a random batch of data
@@ -49,7 +49,7 @@ class DQNAgent:
     def construct_av_network(self, num_actions: int, state_dims: tuple):
         """Construct a neural network for producing actions in 
         the environment"""
-
+        
         action_value_network = Sequential()
 
         action_value_network.add(Conv2D(16, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
@@ -79,15 +79,17 @@ class DQNAgent:
         # facing mismatch issues when using initialisation algorithms
         self.q2 = q1_copy.set_weights(self.q1.get_weights())
 
-    def get_q1_a_star(self, state):
+    def get_q1_a_star(self, network_input):
         """Retrieve best action to take in current state (a*)"""
-        q_vals= self.q1.predict(state)
+
+        q_vals = self.q1.predict(network_input)
         print(q_vals)
         a_star = np.argmax(q_vals)
 
         return a_star
     
-    def epsilon_greedy_selection(self, num_actions: int, possible_actions: list, state):
+    def epsilon_greedy_selection(self, num_actions: int, possible_actions: list,
+                                 network_input: np.ndarray):
         """Choose action A in state S using policy derived from q1(S,.,theta)"""
 
         # Copy to avoid overwriting possible actions elsewhere
@@ -99,7 +101,7 @@ class DQNAgent:
         generated_float = np.random.rand()
 
         # Calculate best action estimate (a_star)
-        a_star = self.get_q1_a_star(state)
+        a_star = self.get_q1_a_star(network_input)
 
         if generated_float < a_star_chance:
             state_action = a_star
@@ -114,7 +116,7 @@ class DQNAgent:
 def main():
 
     # Set algorithm parameters
-    experience_buffer_size = 1000000
+    experience_buffer_size = 1 # Set to 1 for testing
     epsilon = 0.15
     gamma = 0.9
 
@@ -132,8 +134,7 @@ def main():
     # Concatenate 1 to state dims to represent the number of channels
     # which is 1 because greyscale images used
     state_dims = state_dims + (1,)
-    print("State Dims:", state_dims)
-    print(type(state_dims))
+    print(state_dims)
     
     # Initialise a new DQNAgent
     agent = DQNAgent(epsilon=epsilon, max_buffer_len=experience_buffer_size, gamma=gamma)
@@ -148,16 +149,25 @@ def main():
         next_state, reward, terminal, _, _ = wrapped_env.step(action)
         # Add experience to the buffer
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
+        prev_state = next_state
 
     # Reset emnvironment now that replay buffer filled
-    env = gym.make("ALE/DemonAttack-v5", render_mode='human')
+    env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
     prev_state = wrapped_env.reset()
     terminal = False
 
-    while not terminal:
-        action = 2 # Get action from network
-        break
+    # while not terminal:
+    for i in range(1):
+        # Reshape prev_state array data to be passed into network
+        network_input = prev_state[0].reshape(1, 84, 84, 1)
+        action = agent.epsilon_greedy_selection(num_actions,
+                                                possible_actions, network_input)
+        next_state, reward, terminal, _, _ = wrapped_env.step(action)
+        print("Action Taken:", action)
+        agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
+        prev_state = next_state
+        
 
 main()
 
