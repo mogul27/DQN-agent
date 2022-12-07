@@ -73,7 +73,6 @@ class DataWithHistory:
         """
         # copy the supplied data.
         self.data = [item for item in data]
-        self.data.reverse()
 
     @staticmethod
     def empty_state():
@@ -81,34 +80,30 @@ class DataWithHistory:
         return no_state
 
     def _states(self, state_field=0):
-        states = None
+        states = [item[state_field] for item in self.data]
+        # If any of the history is terminated, then clear the states for them
         history_terminated = False
-        for item in self.data:
-            if states is None:
-                states = [item[state_field]]
-            else:
-                history_terminated = history_terminated or item[-1]
-                if history_terminated:
-                    states.append(self.empty_state())
-                else:
-                    states.append(item[state_field])
+        for i in range(len(self.data)-2, -1, -1):
+            history_terminated = history_terminated or self.data[i][-1]
+            if history_terminated:
+                states[i] = self.empty_state()
         return states
 
     def get_state(self):
         return self._states(0)
 
     def get_action(self):
-        return self.data[0][1]
+        return self.data[-1][1]
 
     def get_reward(self):
-        return self.data[0][2]
+        return self.data[-1][2]
 
     def get_next_state(self):
         # next_state is the 4th field, so pass in index of 3
         return self._states(3)
 
     def is_terminated(self):
-        return self.data[0][4]
+        return self.data[-1][4]
 
 
 
