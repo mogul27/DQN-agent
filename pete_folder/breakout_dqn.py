@@ -84,8 +84,6 @@ class AgentBreakoutDqn:
             steps = 0
             # bring the target and action value weights into sync after this many steps.
             clone_weights_count = 30
-            # number of items to replay in addition to the response from env.step
-            replay_num = 3
 
             while not terminated and not truncated:
 
@@ -105,33 +103,14 @@ class AgentBreakoutDqn:
 
                 state, action = next_state, next_action
 
-                batch = self.replay_memory.get_batch(replay_num)
-                # TODO : seems useful to add itself, but is it really
-                batch.append(self.replay_memory.get_last_item())
-                for data_item in batch:
-
-                    # Choose A' from S' using policy derived from q_func
-                    s = data_item.get_state()
-                    a = data_item.get_action()
-                    r = data_item.get_reward()
-                    next_s = data_item.get_next_state()
-                    next_a, _ = self.policy.select_action(next_s)
-
-                    q_s_a = self.q_func.get_value(data_item.get_state(), data_item.get_action())
-                    discounted_next_q_s_a = discount_factor * self.q_func.get_target_value(next_s, next_a)
-                    if data_item.is_terminated():
-                        delta = step_size * r
-                    else:
-                        delta = step_size * (r + discounted_next_q_s_a - q_s_a)
-                    #
-                    self.q_func.update(a, s, delta)
+                # Replay steps from the memory to update the function approximation (q_func)
+                self.replay_steps(discount_factor, step_size)
 
                 clone_weights_count -= 1
                 if clone_weights_count <= 0:
                     # every n steps clone the weights from the value to the target
                     self.q_func.clone_weights()
                     clone_weights_count = 30
-
 
                 steps += 1
                 if steps >= 100000:
@@ -144,6 +123,35 @@ class AgentBreakoutDqn:
             self.q_func.save_weights()
 
         return agent_rewards
+
+    def replay_steps(self, discount_factor, step_size, replay_num=3):
+        """ Select items from the replay_memory and use them to update the q_func, value function approximation.
+
+        :param discount_factor:
+        :param step_size:
+        :param replay_num: Number of random steps to replay - currently includes the latest step too.
+        :return:
+        """
+        batch = self.replay_memory.get_batch(replay_num)
+        # TODO : seems useful to add the latest too, but is it really
+        batch.append(self.replay_memory.get_last_item())
+        for data_item in batch:
+
+            # Choose A' from S' using policy derived from q_func
+            s = data_item.get_state()
+            a = data_item.get_action()
+            r = data_item.get_reward()
+            next_s = data_item.get_next_state()
+            next_a, _ = self.policy.select_action(next_s)
+
+            q_s_a = self.q_func.get_value(data_item.get_state(), data_item.get_action())
+            discounted_next_q_s_a = discount_factor * self.q_func.get_target_value(next_s, next_a)
+            if data_item.is_terminated():
+                delta = step_size * r
+            else:
+                delta = step_size * (r + discounted_next_q_s_a - q_s_a)
+            #
+            self.q_func.update(a, s, delta)
 
     def reformat_observation(self, obs):
         # Change from array of 128 values of 0-255 to 16x8 of 0-1
@@ -265,15 +273,15 @@ def main():
     best_reward = 0
     timer = Timer()
     timer.start("total time")
-    env = gym.make("ALE/Breakout-v5", obs_type="ram")
-    # env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
+    # env = gym.make("ALE/Breakout-v5", obs_type="ram")
+    env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
     agent = AgentBreakoutDqn(load_weights=True)
-    for i in range(3):
+    for i in range(1):
         inner_timer = Timer()
         inner_timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
-        rewards = agent.train(env, num_episodes=10, save_weights=True)
+        rewards = agent.train(env, num_episodes=1, save_weights=True)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)
