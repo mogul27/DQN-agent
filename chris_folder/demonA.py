@@ -4,6 +4,7 @@ import random
 from keras.models import Sequential, clone_model
 from keras.layers import Dense, Conv2D, Flatten
 from keras.optimizers import Adam
+from keras.losses import Huber
 from collections import deque
 
 
@@ -34,7 +35,7 @@ class ExperienceBuffer:
         # :param batch_size: Number of data elements - default 1
         # :return: list of tuples of (state, action, reward, next_state)
 
-        return random.choices(self._data, k=batch_size)
+        return random.choices(self.data, k=batch_size)
 
 
 class DQNAgent:
@@ -60,7 +61,7 @@ class DQNAgent:
 
         # compile the model
         optimiser = Adam(learning_rate=0.001)
-        action_value_network.compile(optimizer=optimiser, loss="mean_squared_error", metrics=['accuracy'])
+        action_value_network.compile(optimizer=optimiser, loss=Huber(), metrics=['accuracy'])
 
         return action_value_network
 
@@ -72,21 +73,39 @@ class DQNAgent:
         self.experience_buffer = ExperienceBuffer(self.max_buffer_len)
 
         self.q1 = self.construct_av_network(num_actions, state_dims)
+
         # Create a fresh replica of the q1 model
-        q1_copy = clone_model(self.q1)
+        self.q2 = clone_model(self.q1)
+        self.q2.set_weights(self.q1.get_weights())
 
         # Set weights of q2 to be the same as those of q1 to avoid
         # facing mismatch issues when using initialisation algorithms
-        self.q2 = q1_copy.set_weights(self.q1.get_weights())
+        # self.q2 = q1_copy.set_weights(self.q1.get_weights())
 
     def get_q1_a_star(self, network_input):
         """Retrieve best action to take in current state (a*)"""
 
-        q_vals = self.q1.predict(network_input)
-        print(q_vals)
+        q_vals = self.q1.predict(network_input)[0]
         a_star = np.argmax(q_vals)
 
         return a_star
+
+    def get_q2_preds(self, network_input):
+        """Retrieve the best action to take in given state"""
+        q_vals = self.q2.predict(network_input)
+        best_action = np.argmax(q_vals[0]) 
+        best_action_val = q_vals[0][best_action]
+
+        return q_vals, best_action_val
+
+    def get_q1_action_value(self, network_input):
+        q_vals = self.q1.predict(network_input)[0]
+
+        return q_vals
+
+    def train_on_experience(self, y, y_hat):
+        pass
+        #self.q1.fit()
     
     def epsilon_greedy_selection(self, num_actions: int, possible_actions: list,
                                  network_input: np.ndarray):
@@ -117,8 +136,10 @@ def main():
 
     # Set algorithm parameters
     experience_buffer_size = 1 # Set to 1 for testing
+    max_episodes = 1
     epsilon = 0.15
     gamma = 0.9
+    step = 0
 
 
     # Initialise a new environment
@@ -134,7 +155,6 @@ def main():
     # Concatenate 1 to state dims to represent the number of channels
     # which is 1 because greyscale images used
     state_dims = state_dims + (1,)
-    print(state_dims)
     
     # Initialise a new DQNAgent
     agent = DQNAgent(epsilon=epsilon, max_buffer_len=experience_buffer_size, gamma=gamma)
@@ -142,7 +162,6 @@ def main():
 
     # Set terminal to False initially for looping
     terminal=False
-
     # Fill replay buffer sith initial random wandering
     for _ in range(experience_buffer_size):
         action = np.random.choice(possible_actions)
@@ -157,19 +176,57 @@ def main():
     prev_state = wrapped_env.reset()
     terminal = False
 
-    # while not terminal:
-    for i in range(1):
-        # Reshape prev_state array data to be passed into network
-        network_input = prev_state[0].reshape(1, 84, 84, 1)
+    for episode in range(max_episodes):
+        
+        # Account for different shape of initial state
+        if step == 0:
+            # Reshape prev_state array data to be passed into network
+            network_input = prev_state[0].reshape(1, 84, 84, 1)
+        else:
+            network_input = prev_state.reshape(1, 84, 84, 1)
         action = agent.epsilon_greedy_selection(num_actions,
                                                 possible_actions, network_input)
         next_state, reward, terminal, _, _ = wrapped_env.step(action)
         print("Action Taken:", action)
+
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
         prev_state = next_state
+
+        minibatch = agent.experience_buffer.get_random_data(10)
+
+ 
+        for experience in minibatch:
+            
+            # Unpack experience
+            # Label with exp to avoid overwriting current state
+            prev_state_exp, action_exp, reward_exp, next_state_exp, terminal_exp = experience
+
+            # Reshape next_state to be passed into network
+            network_input = next_state_exp.reshape(1, 84, 84, 1)
+            
+            # Retrieve q2 predictions and value for the best action
+            target_preds, best_action_val = agent.get_q2_preds(network_input)
+            
+            if terminal_exp:
+                target_preds[0][action_exp] = reward_exp
+            else:
+                # Retrieve best possible action according to target network
+                target_preds[0][action_exp] = reward_exp + gamma*best_action_val
+            
+            # Reshape prev_state to be passed into network
+            # Previous states sampled may be a different shape/type
+
+            if type(prev_state_exp) == tuple:
+                network_input = prev_state_exp[0].reshape(1, 84, 84, 1)
+            else:
+                network_input = prev_state_exp.reshape(1, 84, 84, 1)
+            
+            agent.q1.fit(network_input, target_preds, epochs=1, batch_size=1)
         
 
+# y is target because that's what the target network does (actual answer)
+# y_hat is your attempt at it
+
+
+
 main()
-
-
-# Select action greedily - use best -> Otherwise use random action
