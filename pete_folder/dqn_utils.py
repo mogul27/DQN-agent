@@ -77,7 +77,7 @@ class DataWithHistory:
 
     @staticmethod
     def empty_state():
-        no_state = np.zeros(128).reshape(8, 16)
+        no_state = np.unpackbits(np.zeros(128, dtype=np.uint8).reshape(128, 1), axis=1)
         return no_state
 
     def _states(self, state_field=0):
