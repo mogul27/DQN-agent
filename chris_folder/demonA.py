@@ -85,27 +85,23 @@ class DQNAgent:
     def get_q1_a_star(self, network_input):
         """Retrieve best action to take in current state (a*)"""
 
-        q_vals = self.q1.predict(network_input)[0]
+        q_vals = self.q1.predict(network_input, verbose=0)[0]
         a_star = np.argmax(q_vals)
 
         return a_star
 
     def get_q2_preds(self, network_input):
         """Retrieve the best action to take in given state"""
-        q_vals = self.q2.predict(network_input)
+        q_vals = self.q2.predict(network_input, verbose=0)
         best_action = np.argmax(q_vals[0]) 
         best_action_val = q_vals[0][best_action]
 
         return q_vals, best_action_val
 
     def get_q1_action_value(self, network_input):
-        q_vals = self.q1.predict(network_input)[0]
+        q_vals = self.q1.predict(network_input, verbose=0)[0]
 
         return q_vals
-
-    def train_on_experience(self, y, y_hat):
-        pass
-        #self.q1.fit()
     
     def epsilon_greedy_selection(self, num_actions: int, possible_actions: list,
                                  network_input: np.ndarray):
@@ -131,15 +127,22 @@ class DQNAgent:
             state_action = random.sample(valid_actions, 1)[0]
 
         return state_action
+    
+    def save_weights(self):
+        self.q1.save_weights("q1.h5")
+        self.q2.save_weights("q2.h5")
+
+    def load_weights(self):
+        self.q1.load_weights("q1.h5")
+        self.q2.load_weights("q2.h5")
 
 def main():
 
     # Set algorithm parameters
-    experience_buffer_size = 1 # Set to 1 for testing
+    experience_buffer_size = 10000 
     max_episodes = 1
     epsilon = 0.15
     gamma = 0.9
-    step = 0
 
 
     # Initialise a new environment
@@ -170,59 +173,84 @@ def main():
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
         prev_state = next_state
 
-    # Reset emnvironment now that replay buffer filled
-    env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
-    wrapped_env = gym.wrappers.AtariPreprocessing(env)
-    prev_state = wrapped_env.reset()
-    terminal = False
+    # Initialise episode monitoring (rewards, num_episodes)
+    episode_rewards = []
+    episode_counter = 0
 
     for episode in range(max_episodes):
+
+        # Reset environment now that replay buffer filled or new episode started
+        env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
+        wrapped_env = gym.wrappers.AtariPreprocessing(env)
+        prev_state = wrapped_env.reset()
+        terminal = False
+
+        step=0
+        rewards=[]
+
+        while not terminal:
         
-        # Account for different shape of initial state
-        if step == 0:
-            # Reshape prev_state array data to be passed into network
-            network_input = prev_state[0].reshape(1, 84, 84, 1)
-        else:
-            network_input = prev_state.reshape(1, 84, 84, 1)
-        action = agent.epsilon_greedy_selection(num_actions,
-                                                possible_actions, network_input)
-        next_state, reward, terminal, _, _ = wrapped_env.step(action)
-        print("Action Taken:", action)
-
-        agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
-        prev_state = next_state
-
-        minibatch = agent.experience_buffer.get_random_data(10)
-
- 
-        for experience in minibatch:
-            
-            # Unpack experience
-            # Label with exp to avoid overwriting current state
-            prev_state_exp, action_exp, reward_exp, next_state_exp, terminal_exp = experience
-
-            # Reshape next_state to be passed into network
-            network_input = next_state_exp.reshape(1, 84, 84, 1)
-            
-            # Retrieve q2 predictions and value for the best action
-            target_preds, best_action_val = agent.get_q2_preds(network_input)
-            
-            if terminal_exp:
-                target_preds[0][action_exp] = reward_exp
+            # Account for different shape of initial state
+            if step == 0:
+                # Reshape prev_state array data to be passed into network
+                network_input = prev_state[0].reshape(1, 84, 84, 1)
             else:
-                # Retrieve best possible action according to target network
-                target_preds[0][action_exp] = reward_exp + gamma*best_action_val
+                network_input = prev_state.reshape(1, 84, 84, 1)
+            action = agent.epsilon_greedy_selection(num_actions,
+                                                    possible_actions, network_input)
+            next_state, reward, terminal, _, _ = wrapped_env.step(action)
+            rewards.append(reward)
+            print("Action Taken:", action)
+
+            agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
+            prev_state = next_state
+
+            minibatch = agent.experience_buffer.get_random_data(10)
+
+            for experience in minibatch:
+                
+                # Unpack experience
+                # Label with exp to avoid overwriting current state
+                prev_state_exp, action_exp, reward_exp, next_state_exp, terminal_exp = experience
+
+                # Reshape next_state to be passed into network
+                network_input = next_state_exp.reshape(1, 84, 84, 1)
+                
+                # Retrieve q2 predictions and value for the best action
+                target_preds, best_action_val = agent.get_q2_preds(network_input)
+                
+                if terminal_exp:
+                    target_preds[0][action_exp] = reward_exp
+                else:
+                    # Retrieve best possible action according to target network
+                    target_preds[0][action_exp] = reward_exp + gamma*best_action_val
 
 
-            # Reshape prev_state to be passed into network
-            # Previous states sampled may be a different shape/type
+                # Reshape prev_state to be passed into network
+                # Previous states sampled may be a different shape/type
 
-            if type(prev_state_exp) == tuple:
-                network_input = prev_state_exp[0].reshape(1, 84, 84, 1)
-            else:
-                network_input = prev_state_exp.reshape(1, 84, 84, 1)
+                if type(prev_state_exp) == tuple:
+                    network_input = prev_state_exp[0].reshape(1, 84, 84, 1)
+                else:
+                    network_input = prev_state_exp.reshape(1, 84, 84, 1)
+                
+                agent.q1.fit(network_input, target_preds, epochs=1, batch_size=1, verbose=0)
             
-            agent.q1.fit(network_input, target_preds, epochs=1, batch_size=1)
+            # Every 30 timesteps
+            if step % 30 == 0:
+                agent.q2.set_weights(agent.q1.get_weights())
+                print("Step: ", step)
+
+            step += 1
+
+        episode_rewards.append(rewards)
+        episode_counter += 1
+        print("episode {} complete".format(episode_counter))
+    
+    print("Episode rewards: ", episode_rewards)
+    print("Max Reward:", max(episode_rewards))
+    agent.save_weights()
+
         
 
 # y is target because that's what the target network does (actual answer)
