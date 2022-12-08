@@ -60,15 +60,6 @@ class EGreedyPolicy:
 
         return action
 
-    def select_greedy_action(self, state):
-        """ Select the best action - no exploration.
-
-        :param state: The sate to pick an action for
-        :return: selected action
-        """
-
-        return self.q_func.best_action_for(state)
-
 
 class AgentBreakoutDqn:
 
@@ -103,6 +94,7 @@ class AgentBreakoutDqn:
         if load_weights is not None:
             self.q_func.load_weights(load_weights)
         self.policy = EGreedyPolicy(epsilon, self.q_func, possible_actions, epsilon_decay, epsilon_min)
+        self.play_policy = EGreedyPolicy(0.05, self.q_func, possible_actions)
         self.replay_memory = ReplayMemory(history=3)
         self.max_delta = None
         self.min_delta = None
@@ -121,17 +113,12 @@ class AgentBreakoutDqn:
         terminated = False
         truncated = False
         steps = 0
-        action = -1
+        action = start_action
+        last_action = -1
         repeated_action_count = 0
         life_lost = True
 
         while not terminated and not truncated:
-            last_action = action
-            if life_lost:
-                action = start_action
-            else:
-                action = self.policy.select_greedy_action(state_with_history)
-
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -154,6 +141,11 @@ class AgentBreakoutDqn:
             next_state = self.reformat_observation(obs, last_obs)
             state_with_history.pop(0)
             state_with_history.append(next_state)
+            last_action = action
+            if life_lost:
+                action = start_action
+            else:
+                action = self.play_policy.select_action(state_with_history)
 
             steps += 1
             if steps >= 10000:
