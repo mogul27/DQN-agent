@@ -9,7 +9,7 @@ import keras
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Flatten
-from dqn_utils import ReplayMemory, DataWithHistory
+from dqn_utils import ReplayMemory, DataWithHistory, Timer
 
 
 class EGreedyPolicy:
@@ -60,14 +60,8 @@ class AgentBreakoutDqn:
         self.max_delta = None
         self.min_delta = None
 
-    def train(self, env, num_episodes=10, step_size=1, discount_factor=0.9,
+    def train(self, env, num_episodes=10, step_size=1.0, discount_factor=0.9,
               save_weights=None ):
-        # Implementation of the Sarsa algorithm
-        # Algorithm parameters can be supplied to the train method, but defaults are:
-        #   step_size (alpha) = 0.2
-        #   discount_factor (gamma) = 0.9
-        #   exploratory_action_probability (epsilon) > 0.15
-        #   num_episodes = 150
         agent_rewards = []
         state_with_history = [DataWithHistory.empty_state() for i in range(4)]
 
@@ -273,65 +267,30 @@ class FunctionApprox:
         # clear the batch.
         self.batch = []
 
-import time
-class Timer:
-
-    def __init__(self):
-        self.event_timer = {}
-        self.cummulative_times = {}
-
-    def start(self, name):
-        self.event_timer[name] = time.time()
-
-    def end(self, name):
-        if name in self.event_timer:
-            if name not in self.cummulative_times:
-                self.cummulative_times[name] = 0.0
-            self.cummulative_times[name] += time.time() - self.event_timer[name]
-
-    def display(self):
-        for name, elapsed in self.cummulative_times.items():
-            print(f"{name} : {elapsed:0.1f} seconds")
 
 
-import argparse
-
-def main():
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--render", type=float, default=None, help="Enter human to see the game played")
-    parser.add_argument("--step_size", type=float, default=0.2, help="Step size when calculating the loss")
-    parser.add_argument("--learning_rate", type=float, default=0.0001, help="Learning rate for Adam optimiser")
-    parser.add_argument("--epsilon", type=float, default=0.05, help="Epsilon for e-greedy policy")
-    parser.add_argument("--agents", type=int, default=1, help="Number of agents")
-    parser.add_argument("--episodes", type=int, default=1, help="Number of episodes per agent")
-    parser.add_argument("--load_weights", default=None, help="Load weights from specified file")
-    parser.add_argument("--save_weights", default=None, help="Save weights when agent finishes to specified file")
-
-
-    args = parser.parse_args()
+def run(render=None, num_agents=1, num_episodes=1, epsilon=0.05, learning_rate=0.0001, step_size=1.0,
+        load_weights=None, save_weights=None):
 
     # env = gym.make("ALE/Breakout-v5", obs_type="grayscale")
     # env = gym.make("ALE/Breakout-v5", obs_type="ram")
     # env = gym.make("ALE/Breakout-v5", render_mode="human")
     best_reward = 0
     timer = Timer()
-    timer.start("total time")
-    if args.render == 'human':
+
+    if render == 'human':
         env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human")
     else:
         env = gym.make("ALE/Breakout-v5", obs_type="ram")
 
-    agent = AgentBreakoutDqn(load_weights=args.load_weights,
-                             exploratory_action_probability=args.epsilon,
-                             adam_learning_rate=args.learning_rate)
-    for i in range(args.agents):
-        inner_timer = Timer()
-        inner_timer.start("Agent run")
+    agent = AgentBreakoutDqn(load_weights=load_weights,
+                             exploratory_action_probability=epsilon,
+                             adam_learning_rate=learning_rate)
+    for i in range(num_agents):
+        timer.start("Agent run")
         print(f"\n{i+1}: run episodes")
 
-        rewards = agent.train(env, num_episodes=args.episodes, save_weights=args.save_weights)
+        rewards = agent.train(env, num_episodes=num_episodes, save_weights=save_weights, step_size=step_size)
         # print(rewards)
         max_reward = max(rewards)
         total_rewards = sum(rewards)
@@ -339,13 +298,22 @@ def main():
         best_reward = max(best_reward, max_reward)
         print(f"Best_reward overall = {best_reward}")
 
-        inner_timer.end("Agent run")
-        inner_timer.display()
+        timer.stop("Agent run")
+        timer.display_last()
 
     env.close()
     agent.release_memory()
-    timer.end("total time")
-    timer.display()
+    del agent
+
+    total_time = timer.cumulative_times["Agent run"]
+    total_mins = int(total_time // 60)
+    total_secs = total_time - (total_mins * 60)
+    print(f"\nRun finished. Total time taken: {total_mins} mins {total_secs:0.1f} secs")
+
+
+def main():
+    # run(render='human')
+    run( render='human', num_agents=2, num_episodes=1)
 
 
 if __name__ == '__main__':

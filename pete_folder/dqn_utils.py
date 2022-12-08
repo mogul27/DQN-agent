@@ -1,6 +1,7 @@
 from collections import deque
 import random
 import numpy as np
+import time
 
 
 class ReplayMemory:
@@ -104,6 +105,42 @@ class DataWithHistory:
 
     def is_terminated(self):
         return self.data[-1][4]
+
+
+class Timer:
+    """ Simple timer that accumulates time for an event.
+     timer.start('event_name')
+     timer.stop('event_name')
+
+     timer.event_timer dict has the time of the last start/stop
+     timer.cumulative_times dict has the accumulation of all start/stop for same event
+     """
+
+    def __init__(self):
+        self.event_start = {}
+        self.cumulative_times = {}
+        self.event_times = {}
+
+    def start(self, name):
+        self.event_start[name] = time.time()
+
+    def stop(self, name):
+        if name in self.event_start:
+            elapsed = time.time() - self.event_start[name]
+            if name not in self.event_times:
+                self.event_times[name] = 0.0
+            self.event_times[name] = elapsed
+            if name not in self.cumulative_times:
+                self.cumulative_times[name] = 0.0
+            self.cumulative_times[name] += elapsed
+
+    def display_cumulative(self):
+        for name, elapsed in self.cumulative_times.items():
+            print(f"{name} : {elapsed:0.1f} seconds")
+
+    def display_last(self):
+        for name, elapsed in self.event_times.items():
+            print(f"{name} : {elapsed:0.1f} seconds")
 
 
 

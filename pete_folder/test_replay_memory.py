@@ -17,20 +17,20 @@ class MemoryReplayTest(unittest.TestCase):
         data_item = replay_memory.get_item(5)
 
         # Check we got state 5, and 3 history items of states 4, 3 and 2
-        self.assertEqual(['state 5', 'state 4', 'state 3', 'state 2'], data_item.get_state())
+        self.assertEqual(['state 2', 'state 3', 'state 4', 'state 5'], data_item.get_state())
         self.assertEqual(1, data_item.get_action())
         self.assertEqual(5, data_item.get_reward())
-        self.assertEqual(['state 6', 'state 5', 'state 4', 'state 3'], data_item.get_next_state())
+        self.assertEqual(['state 3', 'state 4', 'state 5', 'state 6'], data_item.get_next_state())
         self.assertEqual(False, data_item.is_terminated())
 
         # Get the last item added
         data_item = replay_memory.get_last_item()
 
         # Check we got state 7, and 3 history items of states 6, 5 and 4
-        self.assertEqual(['state 7', 'state 6', 'state 5', 'state 4'], data_item.get_state())
+        self.assertEqual(['state 4', 'state 5', 'state 6', 'state 7'], data_item.get_state())
         self.assertEqual(3, data_item.get_action())
         self.assertEqual(7, data_item.get_reward())
-        self.assertEqual(['state 8', 'state 7', 'state 6', 'state 5'], data_item.get_next_state())
+        self.assertEqual(['state 5', 'state 6', 'state 7', 'state 8'], data_item.get_next_state())
         self.assertEqual(False, data_item.is_terminated())
 
     def test_batch_retrieve(self):
@@ -89,7 +89,7 @@ class DataWithHistoryTest(unittest.TestCase):
 
         state = data_with_history.get_state()
 
-        self.assertEqual(['state 3', 'state 2', 'state 1', 'state 0'], state)
+        self.assertEqual(['state 0', 'state 1', 'state 2', 'state 3'], state)
 
 
     def test_get_states_with_terminated(self):
@@ -100,11 +100,11 @@ class DataWithHistoryTest(unittest.TestCase):
 
         state = data_with_history.get_state()
 
-        self.assertEqual('state 3', state[0])
-        self.assertEqual('state 2', state[1])
+        self.assertEqual('state 3', state[3])
+        self.assertEqual('state 2', state[2])
         no_state = DataWithHistory.empty_state()
-        self.assertTrue(np.array_equal(no_state, state[2]))
-        self.assertTrue(np.array_equal(no_state, state[3]))
+        self.assertTrue(np.array_equal(no_state, state[1]))
+        self.assertTrue(np.array_equal(no_state, state[0]))
 
 
 
