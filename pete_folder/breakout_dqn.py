@@ -5,6 +5,7 @@ import numpy as np
 import random
 import math
 import gc
+import cv2
 import keras
 from keras import backend as K
 from keras.models import Sequential
@@ -86,11 +87,11 @@ class AgentBreakoutDqn:
         if epsilon_min is None:
             epsilon_min = 0.05
         if adam_learning_rate is None:
-            adam_learning_rate = 0.00001
+            adam_learning_rate = 0.00025
         if step_size is None:
             step_size = 1.0
         if discount_factor is None:
-            discount_factor = 0.9
+            discount_factor = 0.99
 
         self.step_size = step_size
         self.discount_factor = discount_factor
@@ -106,14 +107,14 @@ class AgentBreakoutDqn:
         self.max_delta = None
         self.min_delta = None
 
-    def play(self, env):
+    def play(self, env, start_action=1, num_lives=5):
         """ play a single episode using a greedy policy """
         total_reward = 0
         state_with_history = [DataWithHistory.empty_state() for i in range(4)]
 
         # Init game
         obs, info = env.reset()
-        state = self.reformat_observation(obs)
+        state = self.reformat_observation(obs, obs)
         state_with_history.pop(0)
         state_with_history.append(state)
 
@@ -122,10 +123,14 @@ class AgentBreakoutDqn:
         steps = 0
         action = -1
         repeated_action_count = 0
+        life_lost = True
 
         while not terminated and not truncated:
             last_action = action
-            action = self.policy.select_greedy_action(state_with_history)
+            if life_lost:
+                action = start_action
+            else:
+                action = self.policy.select_greedy_action(state_with_history)
 
             if action == last_action:
                 repeated_action_count += 1
@@ -136,11 +141,17 @@ class AgentBreakoutDqn:
             else:
                 repeated_action_count = 0
 
+            last_obs = obs
+            life_lost = False
             obs, reward, terminated, truncated, info = env.step(action)
+            if 'lives' in info:
+                if info['lives'] < num_lives:
+                    num_lives = info['lives']
+                    life_lost = True
 
             total_reward += reward
 
-            next_state = self.reformat_observation(obs)
+            next_state = self.reformat_observation(obs, last_obs)
             state_with_history.pop(0)
             state_with_history.append(next_state)
 
@@ -151,8 +162,7 @@ class AgentBreakoutDqn:
 
         return total_reward
 
-
-    def train(self, env, num_episodes=10, save_weights=None):
+    def train(self, env, num_episodes=10, save_weights=None, start_action=1, num_lives=5):
         agent_rewards = []
         frame_count = 0
         state_with_history = [DataWithHistory.empty_state() for i in range(4)]
@@ -161,15 +171,19 @@ class AgentBreakoutDqn:
             # Initialise S
             obs, info = env.reset()
             # TODO : add the history to the state.
-            state = self.reformat_observation(obs)
+            state = self.reformat_observation(obs, obs)
             state_with_history.pop(0)
             state_with_history.append(state)
             # Choose A from S using policy derived from Q
-            action = self.policy.select_action(state_with_history)
+            if start_action is None:
+                action = self.policy.select_action(state_with_history)
+            else:
+                action = start_action
 
             total_undiscounted_reward = 0
             terminated = False
             truncated = False
+
             self.max_delta = None
             self.min_delta = None
 
@@ -180,15 +194,26 @@ class AgentBreakoutDqn:
             while not terminated and not truncated:
 
                 # Take action A, observe R, S'
+                last_obs = obs
+                life_lost = False
                 obs, reward, terminated, truncated, info = env.step(action)
+                if 'lives' in info:
+                    if info['lives'] < num_lives:
+                        num_lives = info['lives']
+                        life_lost = True
+
                 # TODO : add the history to the state.
-                next_state = self.reformat_observation(obs)
+                next_state = self.reformat_observation(obs, last_obs)
                 state_with_history.pop(0)
                 state_with_history.append(next_state)
-                # Choose A' from S' using policy derived from q_func
-                next_action = self.policy.select_action(state_with_history)
 
-                self.replay_memory.add(state, action, reward, next_state, terminated)
+                if life_lost:
+                    next_action = start_action
+                else:
+                    # Choose A' from S' using policy derived from q_func
+                    next_action = self.policy.select_action(state_with_history)
+
+                self.replay_memory.add(state, action, reward, next_state, terminated or life_lost)
                 total_undiscounted_reward += reward
                 if terminated:
                     print(f"finished episode {episode+1} after {steps+1} steps. "
@@ -257,9 +282,11 @@ class AgentBreakoutDqn:
                 self.min_delta = min(self.min_delta, delta)
             self.q_func.update(a, s, delta)
 
-    def reformat_observation(self, obs):
-        # Change from array of 128 values of 0-255 to 128x8 bits of 0-1
-        return np.unpackbits(np.array(obs, dtype=np.uint8).reshape(128, 1), axis=1)
+    def reformat_observation(self, obs, last_obs):
+        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
+        merged_obs = np.maximum(obs, last_obs)
+        # reduce merged greyscalegreyscale from 210,160 down to 84,84
+        return cv2.resize(merged_obs, (84, 84), interpolation=cv2.INTER_AREA)
 
     def release_memory(self):
         """ The keras models created in FunctionApprox seem to hang onto memory even after they've gone out of scope.
@@ -301,12 +328,11 @@ class FunctionApprox:
 
         cnn = Sequential()
         # TODO : Find the best arrangement for the ConvNet
-        cnn.add(Conv2D(32, kernel_size=(2, 1), strides=(1, 1), activation='relu', input_shape=(128, 8, 4)))
-        cnn.add(Conv2D(16, kernel_size=(4, 2), strides=(2, 2), activation='relu'))
+        cnn.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(84, 84, 4)))
+        cnn.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
+        cnn.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
         cnn.add(Flatten())
-        cnn.add(Dense(256, activation='relu'))
-        cnn.add(Dense(256, activation='relu'))
-        cnn.add(Dense(16, activation='relu'))
+        cnn.add(Dense(512, activation='relu'))
         cnn.add(Dense(4, activation=None))
         cnn.summary()
 
@@ -374,9 +400,9 @@ def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_de
     best_play_reward = 0
 
     if render == 'human':
-        env = gym.make("ALE/Breakout-v5", obs_type="ram", render_mode="human", frameskip=1)
+        env = gym.make("ALE/Breakout-v5", obs_type="grayscale", render_mode="human", frameskip=1)
     else:
-        env = gym.make("ALE/Breakout-v5", obs_type="ram", frameskip=1)
+        env = gym.make("ALE/Breakout-v5", obs_type="grayscale", frameskip=1)
 
     agent = AgentBreakoutDqn(load_weights=load_weights,
                              epsilon=epsilon, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
