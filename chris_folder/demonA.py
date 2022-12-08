@@ -60,7 +60,7 @@ class DQNAgent:
         action_value_network.add(Dense(num_actions, activation='relu'))
 
         # compile the model
-        optimiser = Adam(learning_rate=0.001)
+        optimiser = Adam(learning_rate=0.01)
         action_value_network.compile(optimizer=optimiser, loss=Huber(), metrics=['accuracy'])
 
         return action_value_network
@@ -139,8 +139,9 @@ class DQNAgent:
 def main():
 
     # Set algorithm parameters
-    experience_buffer_size = 10000 
-    max_episodes = 1
+    minibatch_size = 32
+    experience_buffer_size = 100000
+    max_episodes = 100
     epsilon = 0.15
     gamma = 0.9
 
@@ -176,6 +177,7 @@ def main():
     # Initialise episode monitoring (rewards, num_episodes)
     episode_rewards = []
     episode_counter = 0
+    step_number = []
 
     for episode in range(max_episodes):
 
@@ -200,12 +202,11 @@ def main():
                                                     possible_actions, network_input)
             next_state, reward, terminal, _, _ = wrapped_env.step(action)
             rewards.append(reward)
-            print("Action Taken:", action)
 
             agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
             prev_state = next_state
 
-            minibatch = agent.experience_buffer.get_random_data(10)
+            minibatch = agent.experience_buffer.get_random_data(minibatch_size)
 
             for experience in minibatch:
                 
@@ -239,17 +240,18 @@ def main():
             # Every 30 timesteps
             if step % 30 == 0:
                 agent.q2.set_weights(agent.q1.get_weights())
-                print("Step: ", step)
-
+                print(np.mean(rewards))
+                print("Step:", step)
+            
             step += 1
 
-        episode_rewards.append(rewards)
+        episode_rewards.append(np.mean(rewards))
         episode_counter += 1
+        step_number.append(step)
         print("episode {} complete".format(episode_counter))
-    
-    print("Episode rewards: ", episode_rewards)
-    print("Max Reward:", max(episode_rewards))
-    agent.save_weights()
+        agent.save_weights()
+    print("Episode average rewards: ", episode_rewards)
+    print("Max episode average Reward:", max(episode_rewards))
 
         
 
