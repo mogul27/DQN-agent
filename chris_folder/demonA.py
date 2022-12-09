@@ -57,7 +57,7 @@ class DQNAgent:
         action_value_network.add(Conv2D(32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
         action_value_network.add(Flatten())
         action_value_network.add(Dense(256, activation='relu'))
-        action_value_network.add(Dense(num_actions, activation='relu'))
+        action_value_network.add(Dense(num_actions))
 
         # compile the model
         optimiser = Adam(learning_rate=0.01)
@@ -133,6 +133,8 @@ class DQNAgent:
         self.q2.save_weights("q2.h5")
 
     def load_weights(self):
+         # Initialise Experience Buffer D
+        self.experience_buffer = ExperienceBuffer(self.max_buffer_len)
         self.q1.load_weights("q1.h5")
         self.q2.load_weights("q2.h5")
 
@@ -140,14 +142,13 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 10000 #10000
-    max_episodes = 50 # 100
+    experience_buffer_size = 20000 #20000
+    max_episodes = 500 # 100
     epsilon = 1
-    epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
+    epsilon_decay = 0.9/20000 # decay epsilon to 0.1 over first 100000 frames
     final_epsilon = 0.1
     gamma = 0.99
-    c = 100 # How many steps until update parameters of networks to match
-
+    c = 1000 # How many steps until update parameters of networks to match
 
     # Initialise a new environment
     env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
@@ -285,13 +286,9 @@ def main(load_weights=False):
                                 episode_counter, sum(rewards), step))
         else:
             with open("rewards.txt", "a") as reward_txt:
-                # Append next epsidoe reward at the end of file
+                # Append next epsiode reward at the end of file
                 reward_txt.write("\nEpisode: {}, Total Reward: {}, Steps: {}".format(
                                 episode_counter, sum(rewards), step))
-
- 
-
-
 
     print("Episode average rewards: ", episode_rewards)
     print("Max episode average Reward:", max(episode_rewards))

@@ -1,0 +1,14 @@
+Episode: 1, Total Reward: 90.0, Steps: 559
+Episode: 2, Total Reward: 220.0, Steps: 1427
+Episode: 3, Total Reward: 190.0, Steps: 898
+Episode: 4, Total Reward: 90.0, Steps: 625
+Episode: 5, Total Reward: 250.0, Steps: 1377
+Episode: 6, Total Reward: 280.0, Steps: 1765
+Episode: 7, Total Reward: 310.0, Steps: 1551
+Episode: 8, Total Reward: 150.0, Steps: 1040
+Episode: 9, Total Reward: 80.0, Steps: 486
+Episode: 10, Total Reward: 140.0, Steps: 794
+Episode: 11, Total Reward: 140.0, Steps: 731
+Episode: 12, Total Reward: 90.0, Steps: 500
+Episode: 13, Total Reward: 70.0, Steps: 383
+Episode: 14, Total Reward: 220.0, Steps: 1037
