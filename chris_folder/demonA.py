@@ -85,21 +85,21 @@ class DQNAgent:
     def get_q1_a_star(self, network_input):
         """Retrieve best action to take in current state (a*)"""
 
-        q_vals = self.q1.predict(network_input, verbose=0)[0]
+        q_vals = self.q1.predict_on_batch(network_input)[0]
         a_star = np.argmax(q_vals)
 
         return a_star
 
     def get_q2_preds(self, network_input):
         """Retrieve the best action to take in given state"""
-        q_vals = self.q2.predict(network_input, verbose=0)
+        q_vals = self.q2.predict_on_batch(network_input)
         best_action = np.argmax(q_vals[0]) 
         best_action_val = q_vals[0][best_action]
 
         return q_vals, best_action_val
 
     def get_q1_action_value(self, network_input):
-        q_vals = self.q1.predict(network_input, verbose=0)[0]
+        q_vals = self.q1.predict_on_batch(network_input)[0]
 
         return q_vals
     
@@ -136,14 +136,17 @@ class DQNAgent:
         self.q1.load_weights("q1.h5")
         self.q2.load_weights("q2.h5")
 
-def main():
+def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 100000 #100000
-    max_episodes = 100 # 100
-    epsilon = 0.15
-    gamma = 0.9
+    experience_buffer_size = 10000 #10000
+    max_episodes = 50 # 100
+    epsilon = 1
+    epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
+    final_epsilon = 0.1
+    gamma = 0.99
+    c = 100 # How many steps until update parameters of networks to match
 
 
     # Initialise a new environment
@@ -162,7 +165,11 @@ def main():
     
     # Initialise a new DQNAgent
     agent = DQNAgent(epsilon=epsilon, max_buffer_len=experience_buffer_size, gamma=gamma)
-    agent.initialise_network_buffer(num_actions, state_dims)
+
+    if load_weights:
+        agent.load_weights()
+    else:
+        agent.initialise_network_buffer(num_actions, state_dims)
 
     # Set terminal to False initially for looping
     terminal=False
@@ -242,19 +249,25 @@ def main():
                 else:
                     network_input = prev_state_exp.reshape(1, 84, 84, 1)
 
-                network_input_batch.append(network_input)
+                # use [0] to avoid batch_size being added as an extra_sim
+                network_input_batch.append(network_input[0])
                 target_preds_batch.append(target_preds)
-                
+
+            network_input_batch = np.array(network_input_batch)
+            target_preds_batch=np.array(target_preds_batch)
+            agent.q1.train_on_batch(network_input_batch, target_preds_batch)
             
-            agent.q1.train_on_batch(network_input_batch, target_preds_batch, epochs=1, batch_size=1, verbose=0)
-            
-            # Every 30 timesteps
-            if step % 30 == 0:
+            # Every c timesteps
+            if step % c == 0:
                 agent.q2.set_weights(agent.q1.get_weights())
                 print(np.mean(rewards))
                 print("Step:", step)
             
             step += 1
+            
+            if epsilon > final_epsilon:
+                epsilon = epsilon - epsilon_decay
+            
             
 
         episode_rewards.append(np.mean(rewards))
@@ -262,7 +275,24 @@ def main():
         episode_counter += 1
         step_number.append(step)
         print("episode {} complete. Total episode Reward: {}".format(episode_counter, sum(rewards)))
+
+        # Save weights and write episode reward
         agent.save_weights()
+
+        if episode_counter == 1:
+            with open('rewards.txt', 'w') as reward_txt:
+                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
+                                episode_counter, sum(rewards), step))
+        else:
+            with open("rewards.txt", "a") as reward_txt:
+                # Append next epsidoe reward at the end of file
+                reward_txt.write("\nEpisode: {}, Total Reward: {}, Steps: {}".format(
+                                episode_counter, sum(rewards), step))
+
+ 
+
+
+
     print("Episode average rewards: ", episode_rewards)
     print("Max episode average Reward:", max(episode_rewards))
     print("Episode total rewards: ", total_episode_rewards)
