@@ -139,9 +139,9 @@ class DQNAgent:
 def main():
 
     # Set algorithm parameters
-    minibatch_size = 32
-    experience_buffer_size = 100000
-    max_episodes = 100
+    minibatch_size = 32 #32
+    experience_buffer_size = 100000 #100000
+    max_episodes = 100 # 100
     epsilon = 0.15
     gamma = 0.9
 
@@ -174,8 +174,12 @@ def main():
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
         prev_state = next_state
 
+        if terminal:
+            prev_state = wrapped_env.reset()
+
     # Initialise episode monitoring (rewards, num_episodes)
     episode_rewards = []
+    total_episode_rewards= []
     episode_counter = 0
     step_number = []
 
@@ -208,6 +212,9 @@ def main():
 
             minibatch = agent.experience_buffer.get_random_data(minibatch_size)
 
+            network_input_batch = []
+            target_preds_batch = []
+
             for experience in minibatch:
                 
                 # Unpack experience
@@ -234,8 +241,12 @@ def main():
                     network_input = prev_state_exp[0].reshape(1, 84, 84, 1)
                 else:
                     network_input = prev_state_exp.reshape(1, 84, 84, 1)
+
+                network_input_batch.append(network_input)
+                target_preds_batch.append(target_preds)
                 
-                agent.q1.fit(network_input, target_preds, epochs=1, batch_size=1, verbose=0)
+            
+            agent.q1.train_on_batch(network_input_batch, target_preds_batch, epochs=1, batch_size=1, verbose=0)
             
             # Every 30 timesteps
             if step % 30 == 0:
@@ -244,14 +255,17 @@ def main():
                 print("Step:", step)
             
             step += 1
+            
 
         episode_rewards.append(np.mean(rewards))
+        total_episode_rewards.append(sum(rewards))
         episode_counter += 1
         step_number.append(step)
-        print("episode {} complete".format(episode_counter))
+        print("episode {} complete. Total episode Reward: {}".format(episode_counter, sum(rewards)))
         agent.save_weights()
     print("Episode average rewards: ", episode_rewards)
     print("Max episode average Reward:", max(episode_rewards))
+    print("Episode total rewards: ", total_episode_rewards)
 
         
 
