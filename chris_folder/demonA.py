@@ -142,13 +142,13 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 20000 #20000
-    max_episodes = 500 # 100
+    experience_buffer_size = 100000 #20000
+    max_episodes = 1000 # 1000
     epsilon = 1
     epsilon_decay = 0.9/20000 # decay epsilon to 0.1 over first 100000 frames
     final_epsilon = 0.1
     gamma = 0.99
-    c = 1000 # How many steps until update parameters of networks to match
+    c = 1000 # How many steps until update parameters of networks to match (1000)
 
     # Initialise a new environment
     env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
@@ -160,6 +160,7 @@ def main(load_weights=False):
     num_actions = wrapped_env.action_space.n
     possible_actions = [n for n in range(num_actions)]
     state_dims = wrapped_env.observation_space.shape
+
     # Concatenate 1 to state dims to represent the number of channels
     # which is 1 because greyscale images used
     state_dims = state_dims + (1,)
@@ -191,12 +192,15 @@ def main(load_weights=False):
     episode_counter = 0
     step_number = []
 
+    # Use all_steps to track when to update target network across episodes
+    all_steps = 0
+
     for episode in range(max_episodes):
 
         # Reset environment now that replay buffer filled or new episode started
         env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
         wrapped_env = gym.wrappers.AtariPreprocessing(env)
-        prev_state = wrapped_env.reset()
+        next_state, reward, terminal, truncated, info  = wrapped_env.reset()
         terminal = False
 
         step=0
@@ -212,7 +216,7 @@ def main(load_weights=False):
                 network_input = prev_state.reshape(1, 84, 84, 1)
             action = agent.epsilon_greedy_selection(num_actions,
                                                     possible_actions, network_input)
-            next_state, reward, terminal, _, _ = wrapped_env.step(action)
+            next_state, reward, terminal, truncated, info = wrapped_env.step(action)
             rewards.append(reward)
 
             agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
@@ -234,6 +238,8 @@ def main(load_weights=False):
                 
                 # Retrieve q2 predictions and value for the best action
                 target_preds, best_action_val = agent.get_q2_preds(network_input)
+
+                # target_preds = q1.predict_on_batch()
                 
                 if terminal_exp:
                     target_preds[0][action_exp] = reward_exp
@@ -258,13 +264,17 @@ def main(load_weights=False):
             target_preds_batch=np.array(target_preds_batch)
             agent.q1.train_on_batch(network_input_batch, target_preds_batch)
             
+            # Every 200 timesteps
+            if step % 200 == 0:
+                print("Step: {}, Epsilon: {}".format(step, epsilon))
+
             # Every c timesteps
-            if step % c == 0:
+            if all_steps % c == 0:
+                print("Network Updated")
                 agent.q2.set_weights(agent.q1.get_weights())
-                print(np.mean(rewards))
-                print("Step:", step)
             
             step += 1
+            all_steps += 1
             
             if epsilon > final_epsilon:
                 epsilon = epsilon - epsilon_decay
