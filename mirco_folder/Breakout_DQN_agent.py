@@ -24,33 +24,39 @@ def test_env(env):
 
 
 class DQN_Agent:
-    def __init__(self, eps_schema=1,memory_size = 400000, verbose = 1, save = False):
+    def __init__(self, eps_schema=1,memory_size = 400000,  verbose = 1, save = False):
         self.eps_start  = 1
         self.eps_end = 0.1
         self.annealing_span = 90000
         self.eps = self.eps_start 
         self.eps_schema = eps_schema
-        self.gamma = 0.95
+        self.gamma = 0.99
         self.SAVE_MODELS = save
         self.verbose = verbose
+        self.steps = 0
         self.q_net = self.init_cnn()
         self.target_net = self.init_cnn()
-        self.sync_nets()
+        self.sync_steps = 1000
         self.memory = Memory(N=memory_size, save=save)
-        self.steps = 0
         self.step_threshold = 10000
     
-    def load_q_net():
-        pass
+    
+    def load_q_net(self, file_name):
+        self.q_net = load_model(file_name)
+      
+    def load_target_net(self, file_name):
+        self.target_net = load_model(file_name)
+      
+    def load_memory(self,filename):
+        self.memory.load(filename)
 
-    def save_q_net():
-        pass
+    def save_q_net(self,ep=0):
+        model_name = "q_net_" + str(ep) + ".h5"
+        self.q_net.save(model_name)
 
-    def save_target_net():
-        pass
-
-    def load_target_net():
-        pass
+    def save_target_net(self,ep=0):
+        model_name = "target_net_" + str(ep) + ".h5"
+        self.target_net.save(model_name)
         
     def select_action(self, env, state):
         if self.eps_schema == Eps_Type.ANNEALING:
@@ -63,12 +69,17 @@ class DQN_Agent:
             action = np.argmax(q_vals)
         return action
 
+    def resume_training(self, env, n_episodes=100, frame_skip = 1, steps=0, eps=1):
+        self.steps = steps
+        self.eps = eps
+        self.train(env, n_episodes,frame_skip)
+        return
 
-    def train(self, env, n_episodes=100):
+    def train(self, env, n_episodes=100, frame_skip = 1):
         preprocess = PreProcessing()
-        self.steps = 0
         history = Training_History(n_episodes)
         history.start_time()
+        self.sync_nets()
         for n_ep in range(n_episodes):
             state, info = env.reset()
             preprocess.reset(info['lives'])
@@ -82,10 +93,14 @@ class DQN_Agent:
                 self.steps += 1
                 episode_steps += 1
                 action = self.select_action(env, state)
+                self.sync_nets()
+                for _ in range(frame_skip):
+                    observation, r, terminal, truncated, info = env.step(action)
+                    preprocess.preprocess_reward(r,info)
+                    preprocess.overimporse_states(observation, 0.8)
 
-                observation, reward, terminal, truncated, info = env.step(action)
-                observation = preprocess.preprocess_state(observation)
-                reward = preprocess.preprocess_reward(reward,info)
+                observation =  preprocess.get_overimposed_state()
+                reward = preprocess.get_reward()
                 total_undiscouted_return += reward
 
                 self.memory.add_experience(state, action, observation, reward, terminal)
@@ -94,14 +109,15 @@ class DQN_Agent:
                 state = observation 
             history.update(n_ep, total_undiscouted_return, episode_steps, self.eps, verbose=1)
             
-        self.save_nets()
-        self.memory.save()
+        self.save_nets(n_episodes)
+        self.memory.save("Memory.pickle")
+        history.save("History.pickle")
         
         
-    def save_nets(self):
+    def save_nets(self, ep=0):
         if self.SAVE_MODELS and self.steps % 20 == 0:
-            self.save_q_net() 
-            self.save_target_net()
+            self.save_q_net(ep) 
+            self.save_target_net(ep)
         return
 
 
@@ -117,21 +133,29 @@ class DQN_Agent:
 
     def update_q_net_in_batch(self,batch_size=16):
         s, next_s, a, r, not_terminal =  self.memory.get_experiences_in_batch(batch_size)
+        if np.any(not_terminal ==0):
+            a = 1
          # use the target net to compute the update target
         y = r +  not_terminal * self.gamma * np.max(self.target_net.predict_on_batch(next_s), axis=1)
         # use the q net to compute the estimated q values for all actions during the forward pass
         y_hat = self.q_net.predict_on_batch(s)
         # overwirte the value for the taken action with the future expected return calculated by the target net
-        y_hat[range(y_hat.shape[0]),a] = y
+        y_hat[range(batch_size),a] = y
         # during the backward pass, update the weights of the net to reduce the rmse.
         # NOTE: only the action value for the current action  will contribute to the loss.
-        # therefore the weights will be adjusted accordingly
-        self.q_net.train_on_batch(s, y_hat) # TODO Instead of fitting the results of each replay independently, I could first simaulte all the rreply then fit the network cosidering all datapoints at once. It should be more effient
-        return
+        # therefore the weights will be adjusted accordingly#
+        #w = self.q_net.get_weights()
+        loss = self.q_net.train_on_batch(s, y_hat)
+        #w_new = self.q_net.get_weights()
+
+        return loss[0]
 
     def sync_nets(self):
-        w = self.q_net.get_weights()
-        self.target_net.set_weights(w)
+        if (self.steps % self.sync_steps) == 0:
+            w = self.q_net.get_weights()
+            self.target_net.set_weights(w)
+            if self.verbose > 0:
+                print('Target network synched')
         return
 
     def init_cnn(self, learning_rate=0.001):
@@ -190,11 +214,25 @@ class Training_History():
             f"10 games avg score = {self.history['avg_score_10'][ep]}, "
             f"Cumulative steps = {np.sum(self.history['steps'][0:ep+1])}, "
             f"Frames per hour = {np.sum(self.history['frames_hour'][ep])}")
+    
+    def save(self, file_name="history.pickle"):
+        with open(file_name, 'wb') as file:
+            pickle.dump(self.history, file)
+
 
 class PreProcessing:
     
     def __init__(self, n_lives=5) -> None:
         self.lives = n_lives
+        self.reward = 0
+        self.clear_frame()
+        self.clear_reward()
+
+    def clear_frame(self):
+        self.frame = np.zeros((1,84,84,1))
+
+    def clear_reward(self):
+        self.reward = 0
 
     def preprocess_state(self, s):
         return s.reshape(1,84,84,1)
@@ -203,10 +241,29 @@ class PreProcessing:
         if self.lives > info['lives']:
             r = -1
             self.lives = info['lives']
-        return r
+        self.reward +=r
 
+    def overimporse_states(self, state, fading_rate):
+        state = self.preprocess_state(state)
+        self.frame = np.concatenate((self.frame ,state), axis=3) * fading_rate
+
+    def get_overimposed_state(self):
+        frame = np.max(self.frame, axis=3)
+        frame = self.preprocess_state(frame)
+        self.clear_frame()
+        return frame
+
+    def get_reward(self):
+        reward = self.reward
+        self.clear_reward()
+        return reward
+        
     def reset(self,n_lives):
         self.lives = n_lives
+        self.clear_frame()
+        self.clear_reward()
+
+
 
 
 class Memory:
@@ -235,7 +292,7 @@ class Memory:
           a.append(self.buffer[i][1]),
           obs.append(self.buffer[i][2]),
           r.append(self.buffer[i][3]),
-          t.append(self.buffer[i][4])] for i in np.unique(batch_idxs)]
+          t.append(self.buffer[i][4])] for i in batch_idxs] # removed unique. same sample can exist in the batch
           
         s_batch = np.concatenate(s,axis=0)
         a_batch = np.array(a)
@@ -255,11 +312,16 @@ class Memory:
     def load(self, file_name):
         with open(file_name, 'rb') as file:
             self.buffer = pickle.load(file)
+    
+    
+
+
+            
 
 if __name__ == "__main__":
     # Create the environment
     env = gym.make('ALE/Breakout-v5', render_mode=None, frameskip=1)
-    nv = AtariPreprocessing(env,frame_skip=4)
+    env = AtariPreprocessing(env,frame_skip=1)
     #test_env(env)
     agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING, save=False, verbose=1)
-    agent.train(env, n_episodes=4000)
+    agent.train(env, n_episodes=400, frame_skip=4)
