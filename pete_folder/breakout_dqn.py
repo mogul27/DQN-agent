@@ -67,7 +67,7 @@ class EGreedyPolicy:
 class AgentBreakoutDqn:
 
     def __init__(self, load_weights=None, epsilon=None, epsilon_decay=None, epsilon_min=None,
-                 adam_learning_rate=None, step_size=None, discount_factor=None,
+                 adam_learning_rate=None, discount_factor=None,
                  start_action=1, start_lives=5):
         """ Set up the FunctionApprox and policy so that training runs keep using the same.
 
@@ -83,12 +83,9 @@ class AgentBreakoutDqn:
             epsilon_min = 0.1
         if adam_learning_rate is None:
             adam_learning_rate = 0.00025
-        if step_size is None:
-            step_size = 1.0
         if discount_factor is None:
             discount_factor = 0.99
 
-        self.step_size = step_size
         self.discount_factor = discount_factor
         self.adam_learning_rate = adam_learning_rate
         self.start_action = start_action
@@ -121,11 +118,11 @@ class AgentBreakoutDqn:
                 if info['lives'] < self.num_lives:
                     self.num_lives = info['lives']
                     life_lost = True
-        # Try adjusting the reward to penalise losing a life / or the game.
-        if terminated:
-            reward = -10
-        elif life_lost:
-            reward = -1
+        # # Try adjusting the reward to penalise losing a life / or the game.
+        # if terminated:
+        #     reward = -10
+        # elif life_lost:
+        #     reward = -1
 
         return obs, reward, terminated, truncated, info, life_lost
 
@@ -134,7 +131,7 @@ class AgentBreakoutDqn:
         while self.replay_memory.size < initial_size:
 
             obs, info = env.reset()
-            # TODO : add the history to the state.
+
             state = self.reformat_observation(obs, obs)
             action = self.start_action
 
@@ -194,7 +191,7 @@ class AgentBreakoutDqn:
                 repeated_action_count += 1
                 # check it doesn't get stuck
                 if repeated_action_count > 1000:
-                    print(f"Play with greedy policy has probably got stuck - action {action} repeated 250 times")
+                    print(f"Play with greedy policy has probably got stuck - action {action} repeated 1000 times")
                     break
             else:
                 repeated_action_count = 0
@@ -294,31 +291,30 @@ class AgentBreakoutDqn:
     def replay_steps(self, replay_num=32):
         """ Select items from the replay_memory and use them to update the q_func, value function approximation.
 
-        :param discount_factor:
-        :param step_size:
         :param replay_num: Number of random steps to replay - currently includes the latest step too.
-        :return:
         """
         batch = self.replay_memory.get_batch(replay_num)
 
         # process the batch - get the values and target values in single calls
         states = [data_item.get_state() for data_item in batch]
         next_states = [data_item.get_next_state() for data_item in batch]
-        actions = [data_item.get_action() for data_item in batch]
         qsa_action_values = self.q_func.get_all_action_values(states)
-        discounted_next_qsa_values = self.q_func.get_max_target_values(next_states)
+        next_state_action_values = self.q_func.get_max_target_values(next_states)
+        discounted_next_qsa_values = self.discount_factor * next_state_action_values
 
         for data_item, qsa_action_value, discounted_next_qsa_value in zip(batch, qsa_action_values, discounted_next_qsa_values):
             a = data_item.get_action()
             s = data_item.get_state()
             r = data_item.get_reward()
-            qsa_value = qsa_action_value[a]
             if data_item.is_terminated():
-                delta = self.step_size * r
+                y = r
             else:
-                delta = self.step_size * (r + discounted_next_qsa_value - qsa_value)
+                y = r + discounted_next_qsa_value
+
+            delta = qsa_action_value[a] - y
+
             # update the action value to move closer to the target
-            qsa_action_value[a] = qsa_value + delta
+            qsa_action_value[a] = y
             self.q_func.update(s, qsa_action_value)
 
             if self.max_delta is None:
@@ -414,7 +410,7 @@ class FunctionApprox:
 
     def get_max_target_values(self, states):
         predictions = self.q_hat_target.predict_on_batch(self.transpose_states(states))
-        return [max(prediction) for prediction in predictions]
+        return predictions.max(axis=1)
 
     def best_action_for(self, state):
         prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
@@ -426,7 +422,6 @@ class FunctionApprox:
         if len(self.batch) < self.update_batch_size:
             return
 
-        # TODO : work out how to handle multiple states (i.e. the history) correctly
         states = np.array([s for (s, new_action_value) in self.batch])
         states = self.transpose_states(states)
         new_action_values = np.array([new_action_value for (s, new_action_value) in self.batch])
@@ -438,7 +433,7 @@ class FunctionApprox:
 
 
 def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_decay=None, epsilon_min=None,
-        learning_rate=None, step_size=None, discount_factor=None, replay_init_size=50000,
+        learning_rate=None, discount_factor=None, replay_init_size=50000,
         load_weights=None, save_weights=None):
 
     # env = gym.make("ALE/Breakout-v5", obs_type="grayscale")
@@ -457,7 +452,7 @@ def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_de
     agent = AgentBreakoutDqn(load_weights=load_weights,
                              epsilon=epsilon, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
                              adam_learning_rate=learning_rate,
-                             step_size=step_size, discount_factor=discount_factor)
+                             discount_factor=discount_factor)
 
     timer.start("Init replay memory")
     agent.init_replay_memory(env, replay_init_size)
@@ -470,7 +465,7 @@ def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_de
 
         print(f"\nTraining cycle {i+1} of {training_cycles}:")
         print(f"Start epsilon = {agent.policy.epsilon:0.5f}"
-              f", step_size = {agent.step_size}, discount_factor = {agent.discount_factor}"
+              f", discount_factor = {agent.discount_factor}"
               f", learning_rate = {agent.adam_learning_rate}")
 
         rewards, frame_count = agent.train(env, num_episodes=num_episodes, save_weights=save_weights)
@@ -513,9 +508,11 @@ def main():
     # run(render='human')
     run(
         render='human',
-        training_cycles=2,
+        # epsilon=0.5,
+        # epsilon_decay=0.05,
+        training_cycles=5,
         num_episodes=0,
-        load_weights="batched_updates_2.h5",
+        load_weights="breakout.h5",
         replay_init_size=0)
     # run(render='human', training_cycles=5, num_episodes=0, load_weights="batched_updates_2.h5",
     #     replay_init_size=0)
