@@ -77,8 +77,7 @@ class DataWithHistory:
 
     @staticmethod
     def empty_state():
-        no_state = np.zeros(128).reshape(8, 16)
-        return no_state
+        return np.zeros((84, 84))
 
     def _states(self, state_field=0):
         states = [item[state_field] for item in self.data]
