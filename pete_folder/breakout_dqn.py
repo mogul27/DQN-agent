@@ -70,8 +70,7 @@ class EGreedyPolicy:
 class AgentBreakoutDqn:
 
     def __init__(self, load_weights=None, work_dir=None, epsilon=None, epsilon_decay_span=None, epsilon_min=None,
-                 adam_learning_rate=None, discount_factor=None,
-                 start_action=1, start_lives=5):
+                 adam_learning_rate=None, discount_factor=None):
         """ Set up the FunctionApprox and policy so that training runs keep using the same.
 
         :param load_weights:
@@ -98,9 +97,7 @@ class AgentBreakoutDqn:
 
         self.discount_factor = discount_factor
         self.adam_learning_rate = adam_learning_rate
-        self.start_action = start_action
-        self.start_lives = start_lives
-        self.num_lives = start_lives
+        self.num_lives = 0
 
         possible_actions = [0, 1, 2, 3]
 
@@ -149,9 +146,10 @@ class AgentBreakoutDqn:
             obs, info = env.reset()
 
             state = self.reformat_observation(obs, obs)
-            action = self.start_action
 
-            self.num_lives = self.start_lives
+            if 'lives' in info:
+                # initialise the starting number of lives
+                self.num_lives = info['lives']
 
             terminated = False
             truncated = False
@@ -160,6 +158,7 @@ class AgentBreakoutDqn:
             while not terminated and not truncated:
 
                 last_obs = obs
+                action = self.policy.random_action()
                 obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
 
                 next_state = self.reformat_observation(obs, last_obs)
@@ -168,16 +167,12 @@ class AgentBreakoutDqn:
                     # Replay memory is the required size, so break out.
                     break
 
-                if life_lost:
-                    action = self.start_action
-                else:
-                    action = self.policy.random_action()
-
                 state = next_state
 
                 steps += 1
-                if steps >= 100000:
-                    print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
+                if steps >= initial_size:
+                    print(f"Break out as we've taken {steps} steps during replay memory initialisation. "
+                          f"Something has probably gone wrong...")
                     break
 
         self.replay_memory.save()
@@ -193,18 +188,19 @@ class AgentBreakoutDqn:
         state_with_history.pop(0)
         state_with_history.append(state)
 
+        if 'lives' in info:
+            # initialise the starting number of lives
+            self.num_lives = info['lives']
+
         terminated = False
         truncated = False
         steps = 0
-        action = self.start_action
         last_action = -1
         repeated_action_count = 0
-        self.num_lives = self.start_lives
-        action_frequency = {
-            0: 0, 1: 0, 2: 0, 3: 0
-        }
+        action_frequency = {a: 0 for a in self.q_func.actions}
 
         while not terminated and not truncated:
+            action = self.play_policy.select_action(state_with_history)
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -215,6 +211,7 @@ class AgentBreakoutDqn:
                 repeated_action_count = 0
             action_frequency[action] += 1
             last_obs = obs
+
             obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
 
             total_reward += reward
@@ -223,10 +220,6 @@ class AgentBreakoutDqn:
             state_with_history.pop(0)
             state_with_history.append(next_state)
             last_action = action
-            if life_lost:
-                action = self.start_action
-            else:
-                action = self.play_policy.select_action(state_with_history)
 
             steps += 1
             if steps >= 10000:
@@ -252,9 +245,12 @@ class AgentBreakoutDqn:
             state_with_history.pop(0)
             state_with_history.append(state)
 
-            action = self.start_action
+            action = self.policy.select_action(state_with_history)
 
-            self.num_lives = self.start_lives
+            if 'lives' in info:
+                # initialise the starting number of lives
+                self.num_lives = info['lives']
+
             total_undiscounted_reward = 0
             terminated = False
             truncated = False
@@ -274,11 +270,8 @@ class AgentBreakoutDqn:
                 state_with_history.pop(0)
                 state_with_history.append(next_state)
 
-                if life_lost:
-                    next_action = self.start_action
-                else:
-                    # Choose A' from S' using policy derived from q_func
-                    next_action = self.policy.select_action(state_with_history)
+                # Choose A' from S' using policy derived from q_func
+                next_action = self.policy.select_action(state_with_history)
 
                 self.replay_memory.add(state, action, reward, next_state, terminated or life_lost)
                 total_undiscounted_reward += reward
@@ -338,6 +331,7 @@ class AgentBreakoutDqn:
 
             # update the action value to move closer to the target
             qsa_action_value[a] = y
+            # TODO : keep track of the loss returned from the update as well as delta?
             self.q_func.update(s, qsa_action_value)
 
             if self.max_delta is None:
@@ -531,13 +525,15 @@ def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_de
 def main():
     # run(render='human')
     run(
-        render='human',
+        # render='human',
         # epsilon=0.5,
         # epsilon_decay_span=0.05,
-        training_cycles=5,
-        num_episodes=0,
-        load_weights="breakout_150.h5",
-        replay_init_size=0)
+        training_cycles=2,
+        num_episodes=2,
+        # load_weights="weights.h5",
+        replay_init_size=10
+        # work_dir="breakout_temp"
+    )
     # run(render='human', training_cycles=5, num_episodes=0, load_weights="batched_updates_2.h5",
     #     replay_init_size=0)
     # run(training_cycles=2, num_episodes=1)
