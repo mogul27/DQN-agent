@@ -37,6 +37,47 @@ class ExperienceBuffer:
 
         return random.choices(self.data, k=batch_size)
 
+class DataWithHistory:
+    # TODO : add some constants for the field names.
+
+    def __init__(self, data):
+        """ data should be a list of (state, action, reward, next_state, terminated)
+        This class provides a simple way to extract the state and next_state as lists of multiple items
+        while also considering terminated. We don't want a history item that was terminated to be
+        considered as a valid previous state.
+        """
+        # copy the supplied data.
+        self.data = [item for item in data]
+
+    def empty_state():
+        return np.zeros((84, 84))
+
+    def _states(self, state_field=0):
+        states = [item[state_field] for item in self.data]
+        # If any of the history is terminated, then clear the states for them
+        history_terminated = False
+        for i in range(len(self.data)-2, -1, -1):
+            history_terminated = history_terminated or self.data[i][-1]
+            if history_terminated:
+                states[i] = self.empty_state()
+        return states
+
+    def get_state(self):
+        return self._states(0)
+
+    def get_action(self):
+        return self.data[-1][1]
+
+    def get_reward(self):
+        return self.data[-1][2]
+
+    def get_next_state(self):
+        # next_state is the 4th field, so pass in index of 3
+        return self._states(3)
+
+    def is_terminated(self):
+        return self.data[-1][4]
+
 
 class DQNAgent:
     """Agent for Atari game DemoAttack using DQN"""
@@ -53,14 +94,15 @@ class DQNAgent:
         
         action_value_network = Sequential()
 
-        action_value_network.add(Conv2D(16, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
-        action_value_network.add(Conv2D(32, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
+        action_value_network.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
+        action_value_network.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
+        action_value_network.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
         action_value_network.add(Flatten())
-        action_value_network.add(Dense(256, activation='relu'))
+        action_value_network.add(Dense(512, activation='relu'))
         action_value_network.add(Dense(num_actions))
 
         # compile the model
-        optimiser = Adam(learning_rate=0.01)
+        optimiser = Adam(learning_rate=0.0005)
         action_value_network.compile(optimizer=optimiser, loss=Huber(), metrics=['accuracy'])
 
         return action_value_network
@@ -96,9 +138,9 @@ class DQNAgent:
         best_action = np.argmax(q_vals[0]) 
         best_action_val = q_vals[0][best_action]
 
-        return q_vals, best_action_val
+        return best_action_val
 
-    def get_q1_action_value(self, network_input):
+    def get_q1_action_values(self, network_input):
         q_vals = self.q1.predict_on_batch(network_input)[0]
 
         return q_vals
@@ -127,6 +169,15 @@ class DQNAgent:
             state_action = random.sample(valid_actions, 1)[0]
 
         return state_action
+
+    def adjust_reward_lives(self, reward, info, prev_lives):
+
+        lives = info['lives']
+
+        if lives < prev_lives:
+            reward = reward - 10
+
+        return reward, lives
     
     def save_weights(self):
         self.q1.save_weights("q1.h5")
@@ -142,19 +193,19 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 100000 #20000
+    experience_buffer_size = 2 #100000
     max_episodes = 1000 # 1000
     epsilon = 1
-    epsilon_decay = 0.9/20000 # decay epsilon to 0.1 over first 100000 frames
+    epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
     final_epsilon = 0.1
     gamma = 0.99
     c = 1000 # How many steps until update parameters of networks to match (1000)
 
     # Initialise a new environment
-    env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
+    env = gym.make("ALE/DemonAttack-v5", frameskip=1)
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
-    prev_state = wrapped_env.reset()
+    prev_state, info = wrapped_env.reset()
 
     # Collect info about environment and actions for constructing network outputs
     num_actions = wrapped_env.action_space.n
@@ -175,19 +226,19 @@ def main(load_weights=False):
 
     # Set terminal to False initially for looping
     terminal=False
+
     # Fill replay buffer sith initial random wandering
-    for _ in range(experience_buffer_size):
+    for _ in range(int(experience_buffer_size/2)):
         action = np.random.choice(possible_actions)
-        next_state, reward, terminal, _, _ = wrapped_env.step(action)
+        next_state, reward, terminal, truncated, info = wrapped_env.step(action)
         # Add experience to the buffer
         agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
         prev_state = next_state
 
         if terminal:
-            prev_state = wrapped_env.reset()
+            prev_state, info = wrapped_env.reset()
 
     # Initialise episode monitoring (rewards, num_episodes)
-    episode_rewards = []
     total_episode_rewards= []
     episode_counter = 0
     step_number = []
@@ -198,25 +249,33 @@ def main(load_weights=False):
     for episode in range(max_episodes):
 
         # Reset environment now that replay buffer filled or new episode started
-        env = gym.make("ALE/DemonAttack-v5", render_mode='human', frameskip=1)
+        env = gym.make("ALE/DemonAttack-v5", frameskip=1)
+        state_with_history = np.array([DataWithHistory.empty_state() for i in range(4)])
+        print(np.stack(state_with_history, axis=2).shape)
+
         wrapped_env = gym.wrappers.AtariPreprocessing(env)
-        next_state, reward, terminal, truncated, info  = wrapped_env.reset()
+        prev_state, info  = wrapped_env.reset()
+
+        # Get lives at previous step
+        prev_lives = info['lives']
         terminal = False
 
         step=0
         rewards=[]
+        # Collect non-adjusted rewards
+        real_rewards = []
 
         while not terminal:
         
-            # Account for different shape of initial state
-            if step == 0:
-                # Reshape prev_state array data to be passed into network
-                network_input = prev_state[0].reshape(1, 84, 84, 1)
-            else:
-                network_input = prev_state.reshape(1, 84, 84, 1)
+            network_input = prev_state.reshape(1, 84, 84, 1)
             action = agent.epsilon_greedy_selection(num_actions,
                                                     possible_actions, network_input)
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
+
+            real_rewards.append(reward)
+            # Adjust rewards if lives lost and set prev_lives = lives
+            reward, prev_lives = agent.adjust_reward_lives(reward, info, prev_lives)
+
             rewards.append(reward)
 
             agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
@@ -236,27 +295,23 @@ def main(load_weights=False):
                 # Reshape next_state to be passed into network
                 network_input = next_state_exp.reshape(1, 84, 84, 1)
                 
-                # Retrieve q2 predictions and value for the best action
-                target_preds, best_action_val = agent.get_q2_preds(network_input)
+                # Retrieve q2 value for the best action
+                best_action_val = agent.get_q2_preds(network_input)
 
-                # target_preds = q1.predict_on_batch()
+                # Retrieve q1 predictions which function as y_hat
+                target_preds = agent.get_q1_action_values(network_input)
                 
                 if terminal_exp:
-                    target_preds[0][action_exp] = reward_exp
+                    target_preds[action_exp] = reward_exp
                 else:
                     # Retrieve best possible action according to target network
-                    target_preds[0][action_exp] = reward_exp + gamma*best_action_val
+                    target_preds[action_exp] = reward_exp + gamma*best_action_val
 
 
                 # Reshape prev_state to be passed into network
-                # Previous states sampled may be a different shape/type
+                network_input = prev_state_exp.reshape(1, 84, 84, 1)
 
-                if type(prev_state_exp) == tuple:
-                    network_input = prev_state_exp[0].reshape(1, 84, 84, 1)
-                else:
-                    network_input = prev_state_exp.reshape(1, 84, 84, 1)
-
-                # use [0] to avoid batch_size being added as an extra_sim
+                # use [0] to avoid batch_size being added as an extra_dim
                 network_input_batch.append(network_input[0])
                 target_preds_batch.append(target_preds)
 
@@ -281,11 +336,10 @@ def main(load_weights=False):
             
             
 
-        episode_rewards.append(np.mean(rewards))
-        total_episode_rewards.append(sum(rewards))
+        total_episode_rewards.append(sum(real_rewards))
         episode_counter += 1
         step_number.append(step)
-        print("episode {} complete. Total episode Reward: {}".format(episode_counter, sum(rewards)))
+        print("episode {} complete. Total episode Reward: {}".format(episode_counter, sum(real_rewards)))
 
         # Save weights and write episode reward
         agent.save_weights()
@@ -293,15 +347,13 @@ def main(load_weights=False):
         if episode_counter == 1:
             with open('rewards.txt', 'w') as reward_txt:
                 reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
-                                episode_counter, sum(rewards), step))
+                                episode_counter, sum(real_rewards), step))
         else:
             with open("rewards.txt", "a") as reward_txt:
                 # Append next epsiode reward at the end of file
                 reward_txt.write("\nEpisode: {}, Total Reward: {}, Steps: {}".format(
-                                episode_counter, sum(rewards), step))
+                                episode_counter, sum(real_rewards), step))
 
-    print("Episode average rewards: ", episode_rewards)
-    print("Max episode average Reward:", max(episode_rewards))
     print("Episode total rewards: ", total_episode_rewards)
 
         
