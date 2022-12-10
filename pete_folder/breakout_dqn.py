@@ -4,6 +4,8 @@ import gym
 import numpy as np
 import random
 import math
+import os
+from pathlib import Path
 import gc
 import cv2
 import keras
@@ -18,28 +20,28 @@ class EGreedyPolicy:
     """ Assumes every state has the same possible actions.
     """
 
-    def __init__(self, epsilon, q_func, possible_actions, epsilon_decay=None, epsilon_min=None):
+    def __init__(self, epsilon, q_func, possible_actions, epsilon_decay_span=None, epsilon_min=None):
         """ e-greedy policy based on the supplied q_table.
 
         :param epsilon: small epsilon for the e-greedy policy. This is the probability that we'll
                                     randomly select an action, rather than picking the best.
         :param q_func: Approximates q values for state action pairs so we can select the best action.
         :param possible_actions: actions to be selected from with epsilon probability
-        :param epsilon_decay: the amount to reduce epsilon by after select action has been performed
+        :param epsilon_decay_span: the number of calls over which to decay epsilon
         :param epsilon_min: the min value epsilon can be after decay
         """
         self.q_func = q_func
         self.epsilon = epsilon
         self.possible_actions = possible_actions
-        if epsilon_decay is None:
-            self.epsilon_decay = 0
+        if epsilon_decay_span is None:
             self.epsilon_min = epsilon
+            self.epsilon_decay = 0
         else:
-            self.epsilon_decay = epsilon_decay
             if epsilon_min is None:
                 self.epsilon_min = 0
             else:
                 self.epsilon_min = epsilon_min
+            self.epsilon_decay = (self.epsilon - self.epsilon_min) / epsilon_decay_span
 
     def select_action(self, state):
         """ The EGreedy policy selects the best action the majority of the time. However, a random action is chosen
@@ -56,7 +58,8 @@ class EGreedyPolicy:
             action = self.q_func.best_action_for(state)
 
         # decay epsilon for next time
-        self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
+        if self.epsilon > self.epsilon_min:
+            self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
 
         return action
 
@@ -66,7 +69,7 @@ class EGreedyPolicy:
 
 class AgentBreakoutDqn:
 
-    def __init__(self, load_weights=None, epsilon=None, epsilon_decay=None, epsilon_min=None,
+    def __init__(self, load_weights=None, work_dir=None, epsilon=None, epsilon_decay_span=None, epsilon_min=None,
                  adam_learning_rate=None, discount_factor=None,
                  start_action=1, start_lives=5):
         """ Set up the FunctionApprox and policy so that training runs keep using the same.
@@ -74,11 +77,18 @@ class AgentBreakoutDqn:
         :param load_weights:
         :param exploratory_action_probability:
         """
+        self.work_dir = work_dir
+        if self.work_dir is not None:
+            # location for files.
+            self.work_dir = Path(work_dir)
+            if not self.work_dir.exists():
+                self.work_dir.mkdir(parents=True, exist_ok=True)
+
         # Set default values
         if epsilon is None:
             epsilon = 1.0
-        if epsilon_decay is None:
-            epsilon_decay = 0.0000025
+        if epsilon_decay_span is None:
+            epsilon_decay_span = 50000
         if epsilon_min is None:
             epsilon_min = 0.1
         if adam_learning_rate is None:
@@ -96,10 +106,16 @@ class AgentBreakoutDqn:
 
         self.q_func = FunctionApprox(possible_actions, adam_learning_rate=adam_learning_rate)
         if load_weights is not None:
+            if self.work_dir is not None:
+                load_weights = os.fspath(self.work_dir / load_weights)
             self.q_func.load_weights(load_weights)
-        self.policy = EGreedyPolicy(epsilon, self.q_func, possible_actions, epsilon_decay, epsilon_min)
+        self.policy = EGreedyPolicy(epsilon, self.q_func, possible_actions, epsilon_decay_span, epsilon_min)
         self.play_policy = EGreedyPolicy(0.05, self.q_func, possible_actions)
-        self.replay_memory = ReplayMemory(max_len=100000, history=3)
+        if self.work_dir is None:
+            replay_memory_file = None
+        else:
+            replay_memory_file = os.fspath(self.work_dir / 'replay_memory.pickle')
+        self.replay_memory = ReplayMemory(max_len=100000, history=3, file_name=replay_memory_file)
         self.max_delta = None
         self.min_delta = None
 
@@ -163,6 +179,8 @@ class AgentBreakoutDqn:
                 if steps >= 100000:
                     print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                     break
+
+        self.replay_memory.save()
 
     def play(self, env):
         """ play a single episode using a greedy policy """
@@ -283,7 +301,12 @@ class AgentBreakoutDqn:
             agent_rewards.append(total_undiscounted_reward)
 
         if save_weights is not None:
-            self.q_func.save_weights(save_weights)
+            if self.work_dir is not None:
+                self.q_func.save_weights(self.work_dir / save_weights)
+            else:
+                self.q_func.save_weights(save_weights)
+
+        self.replay_memory.save()
 
         print(f"max delta = {self.max_delta}, min delta = {self.min_delta}")
         return agent_rewards, frame_count
@@ -360,8 +383,9 @@ class FunctionApprox:
         self.q_hat.save_weights(file_name)
 
     def load_weights(self, file_name):
-        self.q_hat.load_weights(file_name)
-        self.q_hat_target.load_weights(file_name)
+        if Path(file_name).exists():
+            self.q_hat.load_weights(file_name)
+            self.q_hat_target.load_weights(file_name)
 
     def clone_weights(self):
         # Copy the weights from action_value network to the target action_value network
@@ -432,9 +456,9 @@ class FunctionApprox:
         self.batch = []
 
 
-def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_decay=None, epsilon_min=None,
+def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_decay_span=None, epsilon_min=None,
         learning_rate=None, discount_factor=None, replay_init_size=50000,
-        load_weights=None, save_weights=None):
+        load_weights=None, save_weights=None, work_dir=None):
 
     # env = gym.make("ALE/Breakout-v5", obs_type="grayscale")
     # env = gym.make("ALE/Breakout-v5", obs_type="ram")
@@ -449,8 +473,8 @@ def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_de
     else:
         env = gym.make("ALE/Breakout-v5", obs_type="grayscale", frameskip=1)
 
-    agent = AgentBreakoutDqn(load_weights=load_weights,
-                             epsilon=epsilon, epsilon_decay=epsilon_decay, epsilon_min=epsilon_min,
+    agent = AgentBreakoutDqn(load_weights=load_weights, work_dir=work_dir,
+                             epsilon=epsilon, epsilon_decay_span=epsilon_decay_span, epsilon_min=epsilon_min,
                              adam_learning_rate=learning_rate,
                              discount_factor=discount_factor)
 
@@ -509,10 +533,10 @@ def main():
     run(
         render='human',
         # epsilon=0.5,
-        # epsilon_decay=0.05,
+        # epsilon_decay_span=0.05,
         training_cycles=5,
         num_episodes=0,
-        load_weights="breakout.h5",
+        load_weights="breakout_150.h5",
         replay_init_size=0)
     # run(render='human', training_cycles=5, num_episodes=0, load_weights="batched_updates_2.h5",
     #     replay_init_size=0)
