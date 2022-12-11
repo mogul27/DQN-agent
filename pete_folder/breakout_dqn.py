@@ -117,6 +117,7 @@ class AgentBreakoutDqn:
         self.min_delta = None
 
     def take_step(self, env, action, skip=3):
+        previous_obs = None
         life_lost = False
         obs, reward, terminated, truncated, info = env.step(action)
         if 'lives' in info:
@@ -126,6 +127,7 @@ class AgentBreakoutDqn:
         skippy = skip
         while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
             skippy -= 1
+            previous_obs = obs
             obs, reward, terminated, truncated, info = env.step(action)
             if 'lives' in info:
                 if info['lives'] < self.num_lives:
@@ -137,7 +139,7 @@ class AgentBreakoutDqn:
         # elif life_lost:
         #     reward = -1
 
-        return obs, reward, terminated, truncated, info, life_lost
+        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
 
     def init_replay_memory(self, env, initial_size=50000):
 
@@ -145,7 +147,7 @@ class AgentBreakoutDqn:
 
             obs, info = env.reset()
 
-            state = self.reformat_observation(obs, obs)
+            state = self.reformat_observation(obs)
 
             if 'lives' in info:
                 # initialise the starting number of lives
@@ -157,11 +159,9 @@ class AgentBreakoutDqn:
 
             while not terminated and not truncated:
 
-                last_obs = obs
                 action = self.policy.random_action()
-                obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
 
-                next_state = self.reformat_observation(obs, last_obs)
                 self.replay_memory.add(state, action, reward, next_state, terminated or life_lost)
                 if self.replay_memory.size >= initial_size:
                     # Replay memory is the required size, so break out.
@@ -184,7 +184,7 @@ class AgentBreakoutDqn:
 
         # Init game
         obs, info = env.reset()
-        state = self.reformat_observation(obs, obs)
+        state = self.reformat_observation(obs)
         state_with_history.pop(0)
         state_with_history.append(state)
 
@@ -212,11 +212,10 @@ class AgentBreakoutDqn:
             action_frequency[action] += 1
             last_obs = obs
 
-            obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+            next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
 
             total_reward += reward
 
-            next_state = self.reformat_observation(obs, last_obs)
             state_with_history.pop(0)
             state_with_history.append(next_state)
             last_action = action
@@ -230,18 +229,18 @@ class AgentBreakoutDqn:
         return total_reward
 
     def train(self, env, num_episodes=10, save_weights=None):
+        sync_weights_count = 0
         agent_rewards = []
         frame_count = 0
         state_with_history = [DataWithHistory.empty_state() for i in range(4)]
 
         for episode in range(num_episodes):
-            # sync value and target weights at the start of an episode
-            self.q_func.clone_weights()
+
 
             # Initialise S
             obs, info = env.reset()
 
-            state = self.reformat_observation(obs, obs)
+            state = self.reformat_observation(obs)
             state_with_history.pop(0)
             state_with_history.append(state)
 
@@ -261,12 +260,15 @@ class AgentBreakoutDqn:
             steps = 0
 
             while not terminated and not truncated:
+                # sync value and target weights at the start of an episode
+                sync_weights_count -= 1
+                if sync_weights_count <= 0:
+                    self.q_func.clone_weights()
+                    sync_weights_count = 1000
 
                 # Take action A, observe R, S'
-                last_obs = obs
-                obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
 
-                next_state = self.reformat_observation(obs, last_obs)
                 state_with_history.pop(0)
                 state_with_history.append(next_state)
 
@@ -343,11 +345,12 @@ class AgentBreakoutDqn:
             else:
                 self.min_delta = min(self.min_delta, delta)
 
-    def reformat_observation(self, obs, last_obs):
+    def reformat_observation(self, obs, previous_obs=None):
         # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        merged_obs = np.maximum(obs, last_obs)
+        if previous_obs is not None:
+            np.maximum(obs, previous_obs, out=obs)
         # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        return cv2.resize(merged_obs, (84, 84), interpolation=cv2.INTER_AREA)
+        return cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
 
     def release_memory(self):
         """ The keras models created in FunctionApprox seem to hang onto memory even after they've gone out of scope.
