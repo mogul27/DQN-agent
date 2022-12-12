@@ -83,7 +83,7 @@ class StateHistory:
     def create_empty_frame(self):
         """Create a single empty frame"""
 
-        empty_state = np.zeros((84, 84))
+        empty_state = np.zeros(84, 84)
 
         return empty_state
     
@@ -92,12 +92,18 @@ class StateHistory:
         to prevent continuity issues across a single history"""
 
         # Create ordered list of terminal flags and find index of first one (default behaviour of .index)
-        terminal_list = [state_terminal_pair[0] for state_terminal_pair in self.data]
-        terminal_index = terminal_list.index(1)
+        terminal_list = [state_terminal_pair[1] for state_terminal_pair in self.data]
+        
+        # create empty frame to replace terminal frames
+        empty_frame = self.create_empty_frame()
 
-        # Replace terminal index onwards with empty frames
-        for i in self.data[terminal_index:]:
-            self.data[i][0] = self.create_empty_frame()
+        if 1 in terminal_list:
+            terminal_index = terminal_list.index(1)
+            # Replace terminal index onwards with empty frames
+            for i in range(4-terminal_index, 5):
+                self.data[-i] = (empty_frame, 0)
+
+
 
     # def _states(self, state_field=0):
     #     states = [item[state_field] for item in self.data]
@@ -236,7 +242,7 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 100000 #100000
+    experience_buffer_size = 2 #100000
     max_episodes = 1000 # 1000
     epsilon = 1
     epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
