@@ -24,28 +24,31 @@ class EGreedyPolicy:
     """ Assumes every state has the same possible actions.
     """
 
-    def __init__(self, epsilon, q_func, possible_actions, epsilon_decay_span=None, epsilon_min=None):
+    def __init__(self, q_func, options=None):
         """ e-greedy policy based on the supplied q_table.
 
-        :param epsilon: small epsilon for the e-greedy policy. This is the probability that we'll
-                                    randomly select an action, rather than picking the best.
         :param q_func: Approximates q values for state action pairs so we can select the best action.
-        :param possible_actions: actions to be selected from with epsilon probability
-        :param epsilon_decay_span: the number of calls over which to decay epsilon
-        :param epsilon_min: the min value epsilon can be after decay
+        :param options: can contain:
+            'epsilon': small epsilon for the e-greedy policy. This is the probability that we'll
+                       randomly select an action, rather than picking the best.
+            'epsilon_decay_span': the number of calls over which to decay epsilon
+            'epsilon_min': the min value epsilon can be after decay
         """
+        self.options = Options(options)
+        self.options.default('epsilon', 0.1)
+
         self.q_func = q_func
-        self.epsilon = epsilon
-        self.possible_actions = possible_actions
-        if epsilon_decay_span is None:
-            self.epsilon_min = epsilon
+        self.epsilon = self.options.get('epsilon')
+        self.possible_actions = q_func.actions
+        if self.options.get('epsilon_decay_span') is None:
+            self.epsilon_min = self.epsilon
             self.epsilon_decay = 0
         else:
-            if epsilon_min is None:
+            if self.options.get('epsilon_min') is None:
                 self.epsilon_min = 0
             else:
-                self.epsilon_min = epsilon_min
-            self.epsilon_decay = (self.epsilon - self.epsilon_min) / epsilon_decay_span
+                self.epsilon_min = self.options.get('epsilon_min')
+            self.epsilon_decay = (self.epsilon - self.epsilon_min) / self.options.get('epsilon_decay_span')
 
     def select_action(self, state):
         """ The EGreedy policy selects the best action the majority of the time. However, a random action is chosen
@@ -269,12 +272,16 @@ class AsyncQLearnerWorker(mp.Process):
         :param state_action_batch: List of tuples with state, action, reward, next_state, terminated
         """
         # process the batch - get the values and target values in single calls
-        # TODO : make this neater
+        # TODO : make this neater - vector based?
         states = []
         next_states = []
+        actions = []
+        rewards = []
         for data_item in state_action_batch:
             states.append(data_item[0])
             next_states.append(data_item[3])
+            actions.append(data_item[1])
+            rewards.append(data_item[2])
         states = np.array(states)
         next_states = np.array(next_states)
 
@@ -282,7 +289,13 @@ class AsyncQLearnerWorker(mp.Process):
         next_state_action_values = self.q_func.get_max_target_values(next_states)
         discounted_next_qsa_values = self.discount_factor * next_state_action_values
         updates = []
-
+        min_d = None
+        max_d = None
+        # weights = self.q_func.get_value_network_weights()
+        # print(f"worker {self.pid} : weights[0][0][0][0][0:5] {weights[0][0][0][0][0:5]}")
+        # print(f"worker {self.pid} : weights[1][0] {weights[1][0]}")
+        #
+        # print(f"worker {self.pid} : a={actions} : r={rewards} : qsa={qsa_action_values} : qsa_next={discounted_next_qsa_values}")
         for data_item, qsa_action_value, discounted_next_qsa_value in zip(state_action_batch, qsa_action_values, discounted_next_qsa_values):
             s, a, r, next_s, terminated = data_item
             if terminated:
@@ -291,6 +304,12 @@ class AsyncQLearnerWorker(mp.Process):
                 y = r + discounted_next_qsa_value
 
             delta = qsa_action_value[a] - y
+            if min_d is None:
+                min_d = delta
+                max_d = delta
+            else:
+                min_d = min(delta, min_d)
+                max_d = max(delta, max_d)
 
             # update the action value to move closer to the target
             qsa_action_value[a] = y
@@ -298,14 +317,15 @@ class AsyncQLearnerWorker(mp.Process):
             updates.append((s, qsa_action_value))
 
         losses = self.q_func.update_batch(updates)
-        return losses
+        return losses, min_d, max_d
 
     def reformat_observation(self, obs, previous_obs=None):
         # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
         if previous_obs is not None:
             np.maximum(obs, previous_obs, out=obs)
         # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        return cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+        return resized_obs / 256
 
     def take_step(self, env, action, skip=3):
         previous_obs = None
@@ -346,8 +366,9 @@ class AsyncQLearnerWorker(mp.Process):
         self.q_func = FunctionApprox(self.options.get('actions'))
 
         # TODO : add epsilon to options
-        self.policy = EGreedyPolicy(1.0, self.q_func, self.options.get('actions'),
-                                    epsilon_decay_span=10000, epsilon_min=0.1)
+        self.policy = EGreedyPolicy(self.q_func, self.options)
+        print(f"worker {self.pid}: Created policy epsilon={self.policy.epsilon}, "
+              f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
         self.gradient_deltas = None
         self.initialised = False
@@ -361,6 +382,7 @@ class AsyncQLearnerWorker(mp.Process):
         action = -1
         total_undiscounted_reward = 0
         state_action_buffer = []
+        min_delta, max_delta = None, None
 
         while True:
 
@@ -373,7 +395,13 @@ class AsyncQLearnerWorker(mp.Process):
             if len(state_action_buffer) >= self.options.get('async_update_freq'):
                 # We've processed enough steps to do an update.
                 weights_before = self.q_func.get_value_network_weights()
-                losses = self.process_batch(state_action_buffer)
+                loss, min_d, max_d = self.process_batch(state_action_buffer)
+                if min_delta is None:
+                    min_delta = min_d
+                    max_delta = max_d
+                else:
+                    min_delta = min(min_d, min_delta)
+                    max_delta = min(max_d, max_delta)
                 weights_after = self.q_func.get_value_network_weights()
                 weight_deltas = [w_after - w_before for w_before, w_after in zip(weights_before, weights_after)]
                 # send the gradient deltas back to the controller
@@ -427,13 +455,22 @@ class AsyncQLearnerWorker(mp.Process):
                         try:
                             # print(f"send info message from worker")
                             # print(f"worker about to send weights deltas to controller")
-                            self.info_queue.put({'total_reward': total_undiscounted_reward, 'steps': steps})
+                            self.info_queue.put({
+                                'total_reward': total_undiscounted_reward,
+                                'steps': steps,
+                                'worker': self.pid,
+                                'epsilon': self.policy.epsilon,
+                                'min_delta': min_delta,
+                                'max_delta': max_delta
+                            })
                         except Exception as e:
                             print(f"worker failed to send weight deltas")
                             print(e)
                         # print(f"Worker {self.pid}: Finished episode after {steps} steps. "
                         #       f"Total reward {total_undiscounted_reward}")
                         steps = 0
+                        min_delta = None
+                        max_delta = None
 
                     state, action = next_state, next_action
 
@@ -493,6 +530,8 @@ class AsyncQLearningController:
         total_steps = 0
         episode_count = 0
         target_sync_counter = self.options.get('target_net_sync_steps')
+        best_reward = -1
+        best_episode = 0
 
         while total_steps < self.options.get('total_steps'):
 
@@ -534,8 +573,14 @@ class AsyncQLearningController:
                 # print(f"controller about to read from info queue")
                 info = info_queue.get(False)
                 episode_count += 1
-                print(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps "
-                      f": reward = {info['total_reward']}")
+                if best_reward < info['total_reward']:
+                    best_reward = info['total_reward']
+                    best_episode = episode_count
+                print(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps"
+                      f" : reward = {info['total_reward']} : pid = {info['worker']}"
+                      f" : epsilon = {info['epsilon']:0.4f}"
+                      f" : min_delta = {info['min_delta']:0.2f} : max_delta = {info['max_delta']:0.2f}"
+                      f" : best_episode = {best_episode} : best_reward = {best_reward}")
 
             except Empty:
                 # Nothing to process, so just carry on
@@ -545,28 +590,54 @@ class AsyncQLearningController:
                 print(f"Failed to read info_queue")
                 print(e)
 
+            if total_steps % 50000 == 0:
+                self.q_func.save_weights('async.h5')
+
         # close down the workers
         print(f"All done, {total_steps} steps processed - close down the workers")
         self.message_all_workers('stop', True)
-        time.sleep(1)   # give them a chance to stop
+
+        time.sleep(2)   # give them a chance to stop
         try:
             for worker, _ in self.workers:
                 worker.terminate()
-                worker.join(1)
+                worker.join(5)
         except Exception as e:
             print("Failed to close the workers cleanly")
             print(e)
 
 
 def create_and_run_agent():
+    timer = Timer()
+    timer.start("agent")
+    # agent = AsyncQLearningController([0, 1, 2, 3], options={
+    #     'num_workers': 5,
+    #     'total_steps': 1500000,
+    #     'async_update_freq': 5,
+    #     'target_net_sync_steps': 20000,
+    #     'epsilon': 1.0,
+    #     'epsilon_min': 0.1,
+    #     'epsilon_decay_span': 200000
+    # })
+    #
+    #
     agent = AsyncQLearningController([0, 1, 2, 3], options={
-        'num_workers': 4,
-        'total_steps': 100000,
+        'num_workers': 3,
+        'total_steps': 25000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 250
+        'target_net_sync_steps': 2500,
+        'epsilon': 1.0,
+        'epsilon_min': 0.1,
+        'epsilon_decay_span': 6000
     })
     agent.train()
-
+    timer.stop('agent')
+    elapsed = timer.event_times['agent']
+    hours = int(elapsed / 3600)
+    elapsed = elapsed - 3600*hours
+    mins = int(elapsed / 60)
+    secs = int(elapsed - 60*mins)
+    print(f"Total time taken by agent is {hours} hours {mins} mins {secs} secs")
 
 if __name__ == '__main__':
     create_and_run_agent()
