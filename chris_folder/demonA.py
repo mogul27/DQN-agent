@@ -6,12 +6,13 @@ from keras.layers import Dense, Conv2D, Flatten
 from keras.optimizers import Adam
 from keras.losses import Huber
 from collections import deque
+import copy
 
 
 class ExperienceBuffer:
     """ Maintain a memory of states and rewards from previous experience.
 
-    Stores (state, action, reward, next_state) combinations encountered while playing the game up
+    Stores (history, action, reward, next_history) combinations encountered while playing the game up
     to a limit N
     Return random selection from the list
     """
@@ -21,13 +22,13 @@ class ExperienceBuffer:
         self.size = 0
         self.max_len = max_buffer_len
 
-    def add(self, state, action, reward, next_state, terminal):
+    def add(self, history, action, reward, next_history):
         if self.size >= self.max_len:
             # don't grow bigger, just lose one off the front.
             self.data.popleft()
         else:
             self.size += 1
-        self.data.append((state, action, reward, next_state, terminal))
+        self.data.append((history, action, reward, next_history))
 
     def get_random_data(self, batch_size=1):
         # get a random batch of data
@@ -37,47 +38,89 @@ class ExperienceBuffer:
 
         return random.choices(self.data, k=batch_size)
 
-class DataWithHistory:
-    # TODO : add some constants for the field names.
+class StateHistory:
 
-    def __init__(self, data):
-        """ data should be a list of (state, action, reward, next_state, terminated)
-        This class provides a simple way to extract the state and next_state as lists of multiple items
-        while also considering terminated. We don't want a history item that was terminated to be
-        considered as a valid previous state.
+    def __init__(self):
+        """ Store tuples of head (current) state and its previous 3 frames and whether any of those
+        frames are terminal to avoid including states running over differnt episodes.
+        Contains a list of 4 tuples representing the current and 3 previous frames
         """
-        # copy the supplied data.
-        self.data = [item for item in data]
+        
+        self.data = []
 
-    def empty_state():
-        return np.zeros((84, 84))
+    def empty_state(self):
+        """Create an empty state """
+        empty_state = np.zeros((84, 84))
+        terminal = 0
 
-    def _states(self, state_field=0):
-        states = [item[state_field] for item in self.data]
-        # If any of the history is terminated, then clear the states for them
-        history_terminated = False
-        for i in range(len(self.data)-2, -1, -1):
-            history_terminated = history_terminated or self.data[i][-1]
-            if history_terminated:
-                states[i] = self.empty_state()
+        empty_history = [(empty_state, terminal) for i in range(4)]
+
+        self.data = empty_history
+
+    def get_states(self):
+        """Retrieve only the states without the terminated flag to be passed into a cnn"""
+        
+        states = [state_terminal_pair[0] for state_terminal_pair in self.data]
+        states = self.reshape_state(states)
+
         return states
 
-    def get_state(self):
-        return self._states(0)
+    
+    def reshape_state(self, states):
+        """Reformat a state with history to be fed into cnn"""
 
-    def get_action(self):
+        states = np.array(states)
+        stacked_history = np.stack(states, axis=0)
+        reshaped_history = np.transpose(stacked_history)
+        network_reshaped_history = reshaped_history.reshape(1, 84, 84, 4)
+
+        return network_reshaped_history
+    
+    def is_terminal(self):
+        """Check terminal flag on most recent state in StateHistory"""
         return self.data[-1][1]
 
-    def get_reward(self):
-        return self.data[-1][2]
+    def create_empty_frame(self):
+        """Create a single empty frame"""
 
-    def get_next_state(self):
-        # next_state is the 4th field, so pass in index of 3
-        return self._states(3)
+        empty_state = np.zeros((84, 84))
 
-    def is_terminated(self):
-        return self.data[-1][4]
+        return empty_state
+    
+    def stop_terminal_continuity(self):
+        """If a state within a history is terminal, replace all states from that frame forward
+        to prevent continuity issues across a single history"""
 
+        # Create ordered list of terminal flags and find index of first one (default behaviour of .index)
+        terminal_list = [state_terminal_pair[0] for state_terminal_pair in self.data]
+        terminal_index = terminal_list.index(1)
+
+        # Replace terminal index onwards with empty frames
+        for i in self.data[terminal_index:]:
+            self.data[i][0] = self.create_empty_frame()
+
+    # def _states(self, state_field=0):
+    #     states = [item[state_field] for item in self.data]
+    #     # If any of the history is terminated, then clear the states for them
+    #     history_terminated = False
+    #     for i in range(len(self.data)-2, -1, -1):
+    #         history_terminated = history_terminated or self.data[i][-1]
+    #         if history_terminated:
+    #             states[i] = self.empty_state()
+    #     return states
+
+    # def get_state(self):
+    #     return self._states(0)
+
+    # def get_action(self):
+    #     return self.data[-1][1]
+
+    # def get_reward(self):
+    #     return self.data[-1][2]
+
+    # def get_next_state(self):
+    #     # next_state is the 4th field, so pass in index of 3
+    #     return self._states(3)
 
 class DQNAgent:
     """Agent for Atari game DemoAttack using DQN"""
@@ -193,7 +236,7 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 2 #100000
+    experience_buffer_size = 100000 #100000
     max_episodes = 1000 # 1000
     epsilon = 1
     epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
@@ -205,7 +248,16 @@ def main(load_weights=False):
     env = gym.make("ALE/DemonAttack-v5", frameskip=1)
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
+
+    # Initialise history object for initial wandering
+    random_history = StateHistory()
+    random_history.empty_state()
+
     prev_state, info = wrapped_env.reset()
+
+    random_history.data.pop(0)
+    random_history.data.append((prev_state, 0))
+
 
     # Collect info about environment and actions for constructing network outputs
     num_actions = wrapped_env.action_space.n
@@ -213,8 +265,8 @@ def main(load_weights=False):
     state_dims = wrapped_env.observation_space.shape
 
     # Concatenate 1 to state dims to represent the number of channels
-    # which is 1 because greyscale images used
-    state_dims = state_dims + (1,)
+    # which is 4 because 4 frames of greyscale images used
+    state_dims = state_dims + (4,)
     
     # Initialise a new DQNAgent
     agent = DQNAgent(epsilon=epsilon, max_buffer_len=experience_buffer_size, gamma=gamma)
@@ -231,8 +283,17 @@ def main(load_weights=False):
     for _ in range(int(experience_buffer_size/2)):
         action = np.random.choice(possible_actions)
         next_state, reward, terminal, truncated, info = wrapped_env.step(action)
+        
+        # Create a copy of the state history object so it is not mutated in memory
+        # then put the next state into the original object
+        random_buffer_history = copy.deepcopy(random_history)
+        random_history.data.pop(0)
+        random_history.data.append((next_state, terminal))
+        # Make a copy of next_state history object to store in memory to avoid mutating it
+        next_random_buffer_history = copy.deepcopy(random_history)
+
         # Add experience to the buffer
-        agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
+        agent.experience_buffer.add(random_buffer_history, action, reward, next_random_buffer_history)
         prev_state = next_state
 
         if terminal:
@@ -250,11 +311,14 @@ def main(load_weights=False):
 
         # Reset environment now that replay buffer filled or new episode started
         env = gym.make("ALE/DemonAttack-v5", frameskip=1)
-        state_with_history = np.array([DataWithHistory.empty_state() for i in range(4)])
-        print(np.stack(state_with_history, axis=2).shape)
+        state_history = StateHistory()
+        # Fill state history with empty states
+        state_history.empty_state()
 
         wrapped_env = gym.wrappers.AtariPreprocessing(env)
         prev_state, info  = wrapped_env.reset()
+        state_history.data.pop(0)
+        state_history.data.append((prev_state, 0))
 
         # Get lives at previous step
         prev_lives = info['lives']
@@ -266,8 +330,8 @@ def main(load_weights=False):
         real_rewards = []
 
         while not terminal:
-        
-            network_input = prev_state.reshape(1, 84, 84, 1)
+            
+            network_input = state_history.get_states()
             action = agent.epsilon_greedy_selection(num_actions,
                                                     possible_actions, network_input)
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
@@ -278,7 +342,15 @@ def main(load_weights=False):
 
             rewards.append(reward)
 
-            agent.experience_buffer.add(prev_state, action, reward, next_state, terminal)
+            # Create a copy of the state history object so it is not mutated in memory
+            # then put the next state into the original object
+            buffer_history = copy.deepcopy(state_history)
+            state_history.data.pop(0)
+            state_history.data.append((next_state, terminal))
+            # Make a copy of next_state history object to store in memory to avoid mutating it
+            next_buffer_history = copy.deepcopy(state_history)
+
+            agent.experience_buffer.add(buffer_history, action, reward, next_buffer_history)
             prev_state = next_state
 
             minibatch = agent.experience_buffer.get_random_data(minibatch_size)
@@ -290,10 +362,15 @@ def main(load_weights=False):
                 
                 # Unpack experience
                 # Label with exp to avoid overwriting current state
-                prev_state_exp, action_exp, reward_exp, next_state_exp, terminal_exp = experience
+                prev_history_exp, action_exp, reward_exp, next_buffer_history = experience
+
+                # Prevent single state histories from spanning multiple episodes before training
+                # using these histories
+                buffer_history.stop_terminal_continuity()
+                next_buffer_history.stop_terminal_continuity()
 
                 # Reshape next_state to be passed into network
-                network_input = next_state_exp.reshape(1, 84, 84, 1)
+                network_input = next_buffer_history.get_states()
                 
                 # Retrieve q2 value for the best action
                 best_action_val = agent.get_q2_preds(network_input)
@@ -301,7 +378,7 @@ def main(load_weights=False):
                 # Retrieve q1 predictions which function as y_hat
                 target_preds = agent.get_q1_action_values(network_input)
                 
-                if terminal_exp:
+                if next_buffer_history.is_terminal():
                     target_preds[action_exp] = reward_exp
                 else:
                     # Retrieve best possible action according to target network
@@ -309,7 +386,7 @@ def main(load_weights=False):
 
 
                 # Reshape prev_state to be passed into network
-                network_input = prev_state_exp.reshape(1, 84, 84, 1)
+                network_input = prev_history_exp.get_states()
 
                 # use [0] to avoid batch_size being added as an extra_dim
                 network_input_batch.append(network_input[0])
@@ -333,8 +410,9 @@ def main(load_weights=False):
             
             if epsilon > final_epsilon:
                 epsilon = epsilon - epsilon_decay
-            
-            
+                            # If decay takes it under 0.1
+            if epsilon < final_epsilon:
+                epsilon = final_epsilon
 
         total_episode_rewards.append(sum(real_rewards))
         episode_counter += 1

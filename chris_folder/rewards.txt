@@ -1,2 +1,0 @@
-Episode: 1, Total Reward: 90.0, Steps: 468
-Episode: 2, Total Reward: 110.0, Steps: 578
