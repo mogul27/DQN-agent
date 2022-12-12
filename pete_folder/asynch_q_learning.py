@@ -6,8 +6,9 @@ import time
 import random
 
 import gym
+import cv2
 
-from dqn_utils import Options
+from dqn_utils import Options, DataWithHistory
 
 # import keras
 from keras.models import Sequential
@@ -164,6 +165,14 @@ class FunctionApprox:
         prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
         return np.argmax(prediction[0])
 
+    def update_batch(self, batch):
+        # do the update in batches
+        states = np.array([s for (s, new_action_value) in batch])
+        states = self.transpose_states(states)
+        new_action_values = np.array([new_action_value for (s, new_action_value) in batch])
+
+        return self.q_hat.train_on_batch(states, new_action_values)
+
     def update(self, state, new_action_values):
         # do the update in batches
         self.batch.append((state, new_action_values))
@@ -199,8 +208,8 @@ class AsyncQLearnerWorker(mp.Process):
         self.policy = None
         self.gradient_deltas = None
         self.initialised = False
-
-
+        self.num_lives = 0
+        self.discount_factor = 0.99
 
     def get_latest_tasks(self):
         """ Get the latest tasks from the controller.
@@ -247,6 +256,75 @@ class AsyncQLearnerWorker(mp.Process):
             self.initialised = True
             self.tasks['reset_network_weights'] = None
 
+    def process_batch(self, state_action_batch):
+        """ Process the batch and update the q_func, value function approximation.
+
+        :param state_action_batch: List of tuples with state, action, reward, next_state, terminated
+        """
+        # process the batch - get the values and target values in single calls
+        # TODO : make this neater
+        states = []
+        next_states = []
+        for data_item in state_action_batch:
+            states.append(data_item[0])
+            next_states.append(data_item[3])
+        states = np.array(states)
+        next_states = np.array(next_states)
+
+        qsa_action_values = self.q_func.get_all_action_values(states)
+        next_state_action_values = self.q_func.get_max_target_values(next_states)
+        discounted_next_qsa_values = self.discount_factor * next_state_action_values
+        updates = []
+
+        for data_item, qsa_action_value, discounted_next_qsa_value in zip(state_action_batch, qsa_action_values, discounted_next_qsa_values):
+            s, a, r, next_s, terminated = data_item
+            if terminated:
+                y = r
+            else:
+                y = r + discounted_next_qsa_value
+
+            delta = qsa_action_value[a] - y
+
+            # update the action value to move closer to the target
+            qsa_action_value[a] = y
+
+            updates.append((s, qsa_action_value))
+
+        losses = self.q_func.update_batch(updates)
+        return losses
+
+    def reformat_observation(self, obs, previous_obs=None):
+        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
+        if previous_obs is not None:
+            np.maximum(obs, previous_obs, out=obs)
+        # reduce merged greyscalegreyscale from 210,160 down to 84,84
+        return cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+
+    def take_step(self, env, action, skip=3):
+        previous_obs = None
+        life_lost = False
+        obs, reward, terminated, truncated, info = env.step(action)
+        if 'lives' in info:
+            if info['lives'] < self.num_lives:
+                self.num_lives = info['lives']
+                life_lost = True
+        skippy = skip
+        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
+            skippy -= 1
+            previous_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
+            if 'lives' in info:
+                if info['lives'] < self.num_lives:
+                    self.num_lives = info['lives']
+                    life_lost = True
+        # # Try adjusting the reward to penalise losing a life / or the game.
+        # if terminated:
+        #     reward = -10
+        # elif life_lost:
+        #     reward = -1
+
+        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
+
     def run(self):
         print(f"I am a worker, my PID is {self.pid}")
 
@@ -270,25 +348,69 @@ class AsyncQLearnerWorker(mp.Process):
         steps_since_async_update = 0
 
         env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
-        episode = 1
+        terminated = True
+        state_and_history = None
+        action = -1
+        total_undiscounted_reward = 0
+        state_action_buffer = []
 
         while True:
 
             self.process_controller_messages()
 
-            if steps_since_async_update >= self.options.get('async_update_freq'):
-                self.network_gradient_queue.put(
-                    (
-                        steps_since_async_update,
-                        self.gradient_deltas
-                     )
-                )
-                steps_since_async_update = 0
+            if len(state_action_buffer) >= self.options.get('async_update_freq'):
+                # We've processed enough steps to do an update.
+                weights_before = self.q_func.get_value_network_weights()
+                losses = self.process_batch(state_action_buffer)
+                weights_after = self.q_func.get_value_network_weights()
+                weight_deltas = [w_after - w_before for w_before, w_after in zip(weights_before, weights_after)]
+                # send the gradient deltas back to the controller
+                self.network_gradient_queue.put((len(state_action_buffer), weight_deltas))
+                state_action_buffer = []
 
             if self.initialised:
-                # take a step and calculate the gradient deltas.
-                steps += 1
-                steps_since_async_update += 1
+                if terminated:
+                    obs, info = env.reset()
+
+                    # State includes previous 3 frames.
+                    state = [DataWithHistory.empty_state() for i in range(3)]
+                    state.append(self.reformat_observation(obs))
+
+                    action = self.policy.select_action(state)
+
+                    if 'lives' in info:
+                        # initialise the starting number of lives
+                        self.num_lives = info['lives']
+
+                    total_undiscounted_reward = 0
+                    terminated = False
+
+                else:
+                    # take a step and get the next action from the policy.
+
+                    # Take action A, observe R, S'
+                    obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                    terminated = terminated or truncated    # treat truncated as terminated
+
+                    # take the last 3 frames from state as the history for next_state
+                    next_state = state[1:]
+                    next_state.append(obs)  # And add the latest obs
+
+                    # Choose A' from S' using policy derived from q_func
+                    next_action = self.policy.select_action(next_state)
+
+                    state_action_buffer.append((np.array(state), action, reward, np.array(next_state),
+                                                terminated or life_lost))
+
+                    steps += 1
+                    steps_since_async_update += 1
+
+                    total_undiscounted_reward += reward
+                    if terminated:
+                        print(f"finished episode after {steps} steps. "
+                              f"Total reward {total_undiscounted_reward}")
+
+                    state, action = next_state, next_action
 
 
 class AsyncQLearningController:
@@ -338,7 +460,7 @@ class AsyncQLearningController:
 
         total_steps = 0
 
-        while total_steps < 10:
+        while total_steps < 500:
 
             try:
                 (steps, gradient_deltas) = network_gradients_queue.get(False)
@@ -358,7 +480,9 @@ class AsyncQLearningController:
 
 
 def create_and_run_agent():
-    agent = AsyncQLearningController([0, 1, 2, 3])
+    agent = AsyncQLearningController([0, 1, 2, 3], options={
+        'async_update_freq': 5
+    })
     agent.train()
 
 
