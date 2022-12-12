@@ -83,9 +83,9 @@ class StateHistory:
     def create_empty_frame(self):
         """Create a single empty frame"""
 
-        empty_state = np.zeros(84, 84)
+        empty_frame = np.zeros((84, 84))
 
-        return empty_state
+        return empty_frame
     
     def stop_terminal_continuity(self):
         """If a state within a history is terminal, replace all states from that frame forward
@@ -242,7 +242,7 @@ def main(load_weights=False):
 
     # Set algorithm parameters
     minibatch_size = 32 #32
-    experience_buffer_size = 2 #100000
+    experience_buffer_size = 100000 #100000
     max_episodes = 1000 # 1000
     epsilon = 1
     epsilon_decay = 0.9/100000 # decay epsilon to 0.1 over first 100000 frames
