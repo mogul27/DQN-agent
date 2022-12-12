@@ -8,7 +8,7 @@ import random
 import gym
 import cv2
 
-from dqn_utils import Options, DataWithHistory
+from dqn_utils import Options, DataWithHistory, Timer
 
 # import keras
 from keras.models import Sequential
@@ -191,11 +191,12 @@ class FunctionApprox:
 
 class AsyncQLearnerWorker(mp.Process):
 
-    def __init__(self, messages, network_gradient_queue, options=None):
+    def __init__(self, messages, network_gradient_queue, info_queue, options=None):
         super().__init__()
         # messages is a mp.Queue used to receive messages from the controller
         self.messages = messages
         self.network_gradient_queue = network_gradient_queue
+        self.info_queue = info_queue
         self.options = Options(options)
 
         self.options.default('async_update_freq', 5)
@@ -216,12 +217,12 @@ class AsyncQLearnerWorker(mp.Process):
 
         Overrides any existing task of the same name.
         """
+
         read_messages = True
         while read_messages:
             try:
                 msg_code, content = self.messages.get(False)
-                print(f"worker {self.pid}: got message {msg_code}")
-
+                # print(f"worker {self.pid}: got message {msg_code}")
                 if msg_code in self.tasks:
                     self.tasks[msg_code] = content
                 else:
@@ -229,23 +230,29 @@ class AsyncQLearnerWorker(mp.Process):
             except Empty:
                 # Nothing to process, so just carry on
                 read_messages = False
+            except Exception as e:
+                print(f"read messages failed")
+                print(e)
 
     def process_controller_messages(self):
         """ see if there are any messages from the controller, and process accordingly
         """
         self.get_latest_tasks()
+        if self.tasks['stop']:
+            return
+
         if self.tasks['value_network_weights'] is not None:
-            print(f"worker {self.pid}: update the value network weights")
+            # print(f"worker {self.pid}: update the value network weights")
             self.q_func.set_value_network_weights(self.tasks['value_network_weights'])
             self.tasks['value_network_weights'] = None
 
         if self.tasks['target_network_weights'] is not None:
-            print(f"worker {self.pid}: update the target network weights")
+            # print(f"worker {self.pid}: update the target network weights")
             self.q_func.set_target_network_weights(self.tasks['target_network_weights'])
             self.tasks['target_network_weights'] = None
 
         if self.tasks['reset_network_weights'] is not None:
-            print(f"worker {self.pid}: reset both value and target network weights")
+            # print(f"worker {self.pid}: reset both value and target network weights")
             network_weights = self.tasks['reset_network_weights']
             self.q_func.set_value_network_weights(network_weights)
             self.q_func.set_target_network_weights(network_weights)
@@ -332,14 +339,15 @@ class AsyncQLearnerWorker(mp.Process):
         self.tasks = {
             'value_network_weights': None,
             'target_network_weights': None,
-            'reset_network_weights': None
+            'reset_network_weights': None,
+            'stop': None
         }
 
         self.q_func = FunctionApprox(self.options.get('actions'))
 
         # TODO : add epsilon to options
         self.policy = EGreedyPolicy(1.0, self.q_func, self.options.get('actions'),
-                                    epsilon_decay_span=1000, epsilon_min=0.1)
+                                    epsilon_decay_span=10000, epsilon_min=0.1)
 
         self.gradient_deltas = None
         self.initialised = False
@@ -358,6 +366,10 @@ class AsyncQLearnerWorker(mp.Process):
 
             self.process_controller_messages()
 
+            if self.tasks['stop']:
+                print(F"Worker {self.pid} stopping due to request from controller")
+                return
+
             if len(state_action_buffer) >= self.options.get('async_update_freq'):
                 # We've processed enough steps to do an update.
                 weights_before = self.q_func.get_value_network_weights()
@@ -365,7 +377,12 @@ class AsyncQLearnerWorker(mp.Process):
                 weights_after = self.q_func.get_value_network_weights()
                 weight_deltas = [w_after - w_before for w_before, w_after in zip(weights_before, weights_after)]
                 # send the gradient deltas back to the controller
-                self.network_gradient_queue.put((len(state_action_buffer), weight_deltas))
+                try:
+                    # print(f"worker about to send weights deltas to controller. steps {steps}")
+                    self.network_gradient_queue.put((len(state_action_buffer), weight_deltas))
+                except Exception as e:
+                    print(f"worker failed to send weight deltas")
+                    print(e)
                 state_action_buffer = []
 
             if self.initialised:
@@ -407,18 +424,27 @@ class AsyncQLearnerWorker(mp.Process):
 
                     total_undiscounted_reward += reward
                     if terminated:
-                        print(f"finished episode after {steps} steps. "
-                              f"Total reward {total_undiscounted_reward}")
+                        try:
+                            # print(f"send info message from worker")
+                            # print(f"worker about to send weights deltas to controller")
+                            self.info_queue.put({'total_reward': total_undiscounted_reward, 'steps': steps})
+                        except Exception as e:
+                            print(f"worker failed to send weight deltas")
+                            print(e)
+                        # print(f"Worker {self.pid}: Finished episode after {steps} steps. "
+                        #       f"Total reward {total_undiscounted_reward}")
+                        steps = 0
 
                     state, action = next_state, next_action
 
 
 class AsyncQLearningController:
 
-    def __init__(self, actions, num_workers=1, options=None):
+    def __init__(self, actions, options=None):
         self.actions = actions
-        self.num_workers = num_workers
         self.options = Options(options)
+        self.options.default('num_workers', 1)
+        self.options.default('total_steps', 500)
         self.q_func = FunctionApprox(actions, options)
         self.workers = []
 
@@ -426,9 +452,13 @@ class AsyncQLearningController:
         msg = (msg_code, content)
         for worker, worker_queue in self.workers:
             # send message to each worker
-            print(f"controller sending : {msg_code}")
-            worker_queue.put(msg)
-            print(f"controller sent : {msg_code}")
+            # print(f"controller sending : {msg_code}")
+            try:
+                worker_queue.put(msg)
+            except Exception as e:
+                print(f"Queue put failed in controller")
+                print(e)
+            # print(f"controller sent : {msg_code}")
 
     def update_value_network_weights(self, gradient_deltas):
         value_network_weights = self.q_func.get_value_network_weights()
@@ -437,51 +467,103 @@ class AsyncQLearningController:
 
         self.q_func.set_value_network_weights(value_network_weights)
 
+        self.message_all_workers('value_network_weights', value_network_weights)
+
     def train(self):
-        print('parent process:', os.getppid())
+        print(f"Controller {os.getppid()}: Setting up workers to run asynch q-learning")
         # Need to make sure workers are spawned rather than forked otherwise keras gets into a deadlock. Which seems
         # to be due to multiple processes trying to share the same default tensorflow graph.
         mp.set_start_method('spawn')
 
         # TODO : does this need a max size setting?
-        network_gradients_queue = mp.Queue(100)
+        network_gradients_queue = mp.Queue()
+        info_queue = mp.Queue()
 
         # set up the workers
 
-        for _ in range(self.num_workers):
-            worker_queue = mp.Queue(100)
-            worker = AsyncQLearnerWorker(worker_queue, network_gradients_queue, self.options)
+        for _ in range(self.options.get('num_workers')):
+            worker_queue = mp.Queue()
+            worker = AsyncQLearnerWorker(worker_queue, network_gradients_queue, info_queue, self.options)
             worker.daemon = True    # helps tidy up child processes if parent dies.
             worker.start()
             self.workers.append((worker, worker_queue))
 
         # Send the workers the starting weights
         self.message_all_workers('reset_network_weights', self.q_func.get_value_network_weights())
-
         total_steps = 0
+        episode_count = 0
+        target_sync_counter = self.options.get('target_net_sync_steps')
 
-        while total_steps < 500:
+        while total_steps < self.options.get('total_steps'):
 
+            gradient_messages = []
             try:
-                (steps, gradient_deltas) = network_gradients_queue.get(False)
-                print(f"controller got network gradients")
-                total_steps += steps
-                # update the value network weights.
-                self.update_value_network_weights(gradient_deltas)
+                while True:
+                    # print(f"controller about to read from network gradients queue")
+                    gradient_messages.append(network_gradients_queue.get(False))
+                    # print(f"controller got network gradients")
 
             except Empty:
                 # Nothing to process, so just carry on
                 pass
 
+            except Exception as e:
+                print(f"Failed to get gradients off the queue")
+                print(e)
+
+            if len(gradient_messages) > 0:
+                # print(f"apply the gradients, count of messages = {len(gradient_messages)}")
+                gradient_deltas = None
+                for (steps, deltas) in gradient_messages:
+                    total_steps += steps
+                    target_sync_counter -= steps
+                    # update the value network weights.
+                    if gradient_deltas is None:
+                        gradient_deltas = deltas
+                    else:
+                        gradient_deltas += deltas
+
+                if gradient_deltas is not None:
+                    self.update_value_network_weights(gradient_deltas)
+
+            if target_sync_counter <= 0:
+                self.message_all_workers('target_network_weights', self.q_func.get_target_network_weights())
+                target_sync_counter = self.options.get('target_net_sync_steps')
+
+            try:
+                # print(f"controller about to read from info queue")
+                info = info_queue.get(False)
+                episode_count += 1
+                print(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps "
+                      f": reward = {info['total_reward']}")
+
+            except Empty:
+                # Nothing to process, so just carry on
+                pass
+
+            except Exception as e:
+                print(f"Failed to read info_queue")
+                print(e)
+
         # close down the workers
-        for worker, _ in self.workers:
-            worker.terminate()
-            worker.join(1)
+        print(f"All done, {total_steps} steps processed - close down the workers")
+        self.message_all_workers('stop', True)
+        time.sleep(1)   # give them a chance to stop
+        try:
+            for worker, _ in self.workers:
+                worker.terminate()
+                worker.join(1)
+        except Exception as e:
+            print("Failed to close the workers cleanly")
+            print(e)
 
 
 def create_and_run_agent():
     agent = AsyncQLearningController([0, 1, 2, 3], options={
-        'async_update_freq': 5
+        'num_workers': 4,
+        'total_steps': 100000,
+        'async_update_freq': 5,
+        'target_net_sync_steps': 250
     })
     agent.train()
 
