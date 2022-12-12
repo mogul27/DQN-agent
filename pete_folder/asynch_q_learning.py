@@ -193,21 +193,14 @@ class AsyncQLearnerWorker(mp.Process):
         self.options.default('env_name', "ALE/Breakout-v5")
         self.options.default('actions', [0, 1, 2, 3])
 
-        # keep track of requests from the controller by recording them in the tasks dict.
-        self.tasks = {
-            'value_network_weights': None,
-            'target_network_weights': None,
-            'reset_network_weights': None
-        }
-
-        self.q_func = FunctionApprox(self.options.get('actions'))
-
-        # TODO : add epsilon to options
-        self.policy = EGreedyPolicy(1.0, self.q_func, self.options.get('actions'),
-                                    epsilon_decay_span=1000, epsilon_min=0.1)
-
+        # set these up at the start of run. Saves them being pickled/reloaded when the new process starts.
+        self.tasks = None
+        self.q_func = None
+        self.policy = None
         self.gradient_deltas = None
         self.initialised = False
+
+
 
     def get_latest_tasks(self):
         """ Get the latest tasks from the controller.
@@ -256,6 +249,23 @@ class AsyncQLearnerWorker(mp.Process):
 
     def run(self):
         print(f"I am a worker, my PID is {self.pid}")
+
+        # keep track of requests from the controller by recording them in the tasks dict.
+        self.tasks = {
+            'value_network_weights': None,
+            'target_network_weights': None,
+            'reset_network_weights': None
+        }
+
+        self.q_func = FunctionApprox(self.options.get('actions'))
+
+        # TODO : add epsilon to options
+        self.policy = EGreedyPolicy(1.0, self.q_func, self.options.get('actions'),
+                                    epsilon_decay_span=1000, epsilon_min=0.1)
+
+        self.gradient_deltas = None
+        self.initialised = False
+
         steps = 0
         steps_since_async_update = 0
 
