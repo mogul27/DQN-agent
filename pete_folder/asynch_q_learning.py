@@ -76,21 +76,32 @@ class EGreedyPolicy:
 
 class FunctionApprox:
 
-    def __init__(self, actions, update_batch_size=5, adam_learning_rate=0.0001):
-        self.actions = actions
-        self.q_hat = self.build_cnn(adam_learning_rate)
-        self.q_hat_target = self.build_cnn(adam_learning_rate)
+    def __init__(self, options=None):
+        self.options = Options(options)
+        self.options.default('network_update_batch_size', 5)
+        self.options.default('adam_learning_rate', 0.0001)
+
+        self.actions = self.options.get('actions')
+        self.q_hat = self.build_cnn(self.options.get('adam_learning_rate'))
+        self.q_hat_target = self.build_cnn(self.options.get('adam_learning_rate'))
         self.clone_weights()
-        self.update_batch_size = update_batch_size
+        self.update_batch_size = self.options.get('network_update_batch_size')
         self.batch = []
 
-    def save_weights(self, file_name):
-        self.q_hat.save_weights(file_name)
+    def save_weights(self, save, file_name):
+        if save and file_name is not None:
+            self.q_hat.save_weights(file_name)
 
-    def load_weights(self, file_name):
-        if Path(file_name).exists():
-            self.q_hat.load_weights(file_name)
-            self.q_hat_target.load_weights(file_name)
+    def load_weights(self, load, file_name):
+        if load and file_name is not None:
+            try:
+                if Path(file_name).exists():
+                    self.q_hat.load_weights(file_name)
+                    self.q_hat_target.load_weights(file_name)
+                    print(f"both value and target weights loaded from file {file_name}")
+            except Exception as e:
+                print(f"failed to load weights from {file_name}")
+                print(e)
 
     def clone_weights(self):
         # Copy the weights from action_value network to the target action_value network
@@ -103,10 +114,16 @@ class FunctionApprox:
         self.q_hat.set_weights(weights)
 
     def get_target_network_weights(self):
-        self.q_hat_target.get_weights()
+        return self.q_hat_target.get_weights()
 
     def set_target_network_weights(self, weights):
         self.q_hat_target.set_weights(weights)
+
+    def weights_checksum(self, weights):
+        checksum = 0.0
+        for layer_weights in weights:
+            checksum += layer_weights.sum()
+        return checksum
 
     def build_cnn(self, adam_learning_rate):
         # Crete CNN model to predict actions for states.
@@ -206,7 +223,6 @@ class AsyncQLearnerWorker(mp.Process):
         self.tasks = None
         self.q_func = None
         self.policy = None
-        self.gradient_deltas = None
         self.initialised = False
         self.num_lives = 0
         self.discount_factor = 0.99
@@ -242,23 +258,26 @@ class AsyncQLearnerWorker(mp.Process):
 
         if self.tasks['value_network_weights'] is not None:
             # print(f"worker {self.pid}: update the value network weights")
+            # print(f"Worker {self.pid} : update value network weights "
+            #       f"{self.q_func.weights_checksum(self.tasks['value_network_weights'])}")
             self.q_func.set_value_network_weights(self.tasks['value_network_weights'])
             self.tasks['value_network_weights'] = None
 
         if self.tasks['target_network_weights'] is not None:
             # print(f"worker {self.pid}: update the target network weights")
+            # print(f"Worker {self.pid} : update target network weights "
+            #       f"{self.q_func.weights_checksum(self.tasks['target_network_weights'])}")
             self.q_func.set_target_network_weights(self.tasks['target_network_weights'])
             self.tasks['target_network_weights'] = None
 
         if self.tasks['reset_network_weights'] is not None:
             # print(f"worker {self.pid}: reset both value and target network weights")
             network_weights = self.tasks['reset_network_weights']
+            # print(f"Worker {self.pid} : reset value and target network weights "
+            #       f"{self.q_func.weights_checksum(network_weights)}")
             self.q_func.set_value_network_weights(network_weights)
             self.q_func.set_target_network_weights(network_weights)
 
-            self.gradient_deltas = network_weights
-            for layer_weights in network_weights:
-                layer_weights.fill(0.1)
             self.initialised = True
             self.tasks['reset_network_weights'] = None
 
@@ -287,6 +306,8 @@ class AsyncQLearnerWorker(mp.Process):
         updates = []
         min_d = None
         max_d = None
+        min_q = None
+        max_q = None
         # weights = self.q_func.get_value_network_weights()
         # print(f"worker {self.pid} : weights[0][0][0][0][0:5] {weights[0][0][0][0][0:5]}")
         # print(f"worker {self.pid} : weights[1][0] {weights[1][0]}")
@@ -307,13 +328,20 @@ class AsyncQLearnerWorker(mp.Process):
                 min_d = min(delta, min_d)
                 max_d = max(delta, max_d)
 
+            if min_q is None:
+                min_q = qsa_action_value[a]
+                max_q = qsa_action_value[a]
+            else:
+                min_q = min(qsa_action_value[a], min_q)
+                max_q = max(qsa_action_value[a], max_q)
+
             # update the action value to move closer to the target
             qsa_action_value[a] = y
 
             updates.append((s, qsa_action_value))
 
         losses = self.q_func.update_batch(updates)
-        return losses, min_d, max_d
+        return losses, min_d, max_d, min_q, max_q
 
     def reformat_observation(self, obs, previous_obs=None):
         # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
@@ -359,14 +387,13 @@ class AsyncQLearnerWorker(mp.Process):
             'stop': None
         }
 
-        self.q_func = FunctionApprox(self.options.get('actions'))
+        self.q_func = FunctionApprox(self.options)
 
         # TODO : add epsilon to options
         self.policy = EGreedyPolicy(self.q_func, self.options)
         print(f"worker {self.pid}: Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
-        self.gradient_deltas = None
         self.initialised = False
 
         steps = 0
@@ -379,6 +406,7 @@ class AsyncQLearnerWorker(mp.Process):
         total_undiscounted_reward = 0
         state_action_buffer = []
         min_delta, max_delta = None, None
+        min_q_value, max_q_value = None, None
 
         while True:
 
@@ -391,13 +419,19 @@ class AsyncQLearnerWorker(mp.Process):
             if len(state_action_buffer) >= self.options.get('async_update_freq'):
                 # We've processed enough steps to do an update.
                 weights_before = self.q_func.get_value_network_weights()
-                loss, min_d, max_d = self.process_batch(state_action_buffer)
+                loss, min_d, max_d, min_q, max_q = self.process_batch(state_action_buffer)
                 if min_delta is None:
                     min_delta = min_d
                     max_delta = max_d
                 else:
                     min_delta = min(min_d, min_delta)
                     max_delta = min(max_d, max_delta)
+                if min_q_value is None:
+                    min_q_value = min_q
+                    max_q_value = max_q
+                else:
+                    min_q_value = min(min_q, min_q_value)
+                    max_q_value = min(max_q, max_q_value)
                 weights_after = self.q_func.get_value_network_weights()
                 weight_deltas = [w_after - w_before for w_before, w_after in zip(weights_before, weights_after)]
                 # send the gradient deltas back to the controller
@@ -457,7 +491,9 @@ class AsyncQLearnerWorker(mp.Process):
                                 'worker': self.pid,
                                 'epsilon': self.policy.epsilon,
                                 'min_delta': min_delta,
-                                'max_delta': max_delta
+                                'max_delta': max_delta,
+                                'min_q_value': min_q_value,
+                                'max_q_value': max_q_value
                             })
                         except Exception as e:
                             print(f"worker failed to send weight deltas")
@@ -488,6 +524,8 @@ class AsyncStatsCollector(mp.Process):
         self.q_func = None
         self.policy = None
         self.num_lives = 0
+        self.best_reward = -1
+        self.best_episode = 0
 
     def get_latest_tasks(self):
         """ Get the latest tasks from the controller.
@@ -532,7 +570,8 @@ class AsyncStatsCollector(mp.Process):
             np.maximum(obs, previous_obs, out=obs)
         # reduce merged greyscalegreyscale from 210,160 down to 84,84
         resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
-        return resized_obs / 256
+        return resized_obs
+        # return resized_obs / 256
 
     def take_step(self, env, action, skip=3):
         previous_obs = None
@@ -581,6 +620,7 @@ class AsyncStatsCollector(mp.Process):
         repeated_action_count = 0
         action_frequency = {a: 0 for a in self.q_func.actions}
 
+
         while not terminated:
             action = self.policy.select_action(state)
             if action == last_action:
@@ -609,9 +649,14 @@ class AsyncStatsCollector(mp.Process):
                 print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                 break
 
+        if total_reward > self.best_reward:
+            self.best_reward = total_reward
+            self.best_episode = msg_content['episode_count']
+
         info = f"Play : weights from episode {msg_content['episode_count']}" \
                f" : Action frequency: {action_frequency}" \
-               f" : Reward = {total_reward}"
+               f" : Reward = {total_reward}" \
+               f"   : Best episode = {self.best_episode} : Best reward = {self.best_reward}"
 
         print(info)
 
@@ -627,7 +672,7 @@ class AsyncStatsCollector(mp.Process):
             'stop': None
         }
 
-        self.q_func = FunctionApprox(self.options.get('actions'))
+        self.q_func = FunctionApprox(self.options)
         # use a policy with epsilon of 0.05 for playing to collect stats.
         self.policy = EGreedyPolicy(self.q_func, {'epsilon': 0.05})
         print(f"stats collector {self.pid}: Created policy epsilon={self.policy.epsilon}, "
@@ -656,12 +701,15 @@ class AsyncStatsCollector(mp.Process):
 
 class AsyncQLearningController:
 
-    def __init__(self, actions, options=None):
-        self.actions = actions
+    def __init__(self, options=None):
         self.options = Options(options)
         self.options.default('num_workers', 1)
         self.options.default('total_steps', 500)
-        self.q_func = FunctionApprox(actions, options)
+        self.options.default('weights_file', 'async.h5')
+        self.options.default('load_weights', True)
+        self.options.default('save_weights', True)
+        self.q_func = FunctionApprox(self.options)
+        self.q_func.load_weights(self.options.get('load_weights'), self.options.get('weights_file'))
         self.workers = []
         self.stats_collector = None
 
@@ -681,7 +729,7 @@ class AsyncQLearningController:
         msg = (msg_code, content)
         stats_queue, worker = self.stats_collector
         try:
-            print(f"Send {msg_code} message to stats collector")
+            # print(f"Send {msg_code} message to stats collector")
             stats_queue.put(msg)
         except Exception as e:
             print(f"stats_queue put failed in controller")
@@ -689,9 +737,11 @@ class AsyncQLearningController:
 
     def update_value_network_weights(self, gradient_deltas):
         value_network_weights = self.q_func.get_value_network_weights()
+        # print(f"Controller : value network weights before deltas {self.q_func.weights_checksum(value_network_weights)}")
         for (weights, deltas) in zip(value_network_weights, gradient_deltas):
             weights += deltas
 
+        # print(f"Controller : update value network weights {self.q_func.weights_checksum(value_network_weights)}")
         self.q_func.set_value_network_weights(value_network_weights)
 
         self.message_all_workers('value_network_weights', value_network_weights)
@@ -716,7 +766,9 @@ class AsyncQLearningController:
             self.workers.append((worker, worker_queue))
 
         # Send the workers the starting weights
-        self.message_all_workers('reset_network_weights', self.q_func.get_value_network_weights())
+        starting_weights = self.q_func.get_value_network_weights()
+        # print(f"Controller : init weights for workers {self.q_func.weights_checksum(starting_weights)}")
+        self.message_all_workers('reset_network_weights', starting_weights)
 
         # set up stats_gatherer
         stats_queue = mp.Queue()
@@ -764,7 +816,9 @@ class AsyncQLearningController:
                     self.update_value_network_weights(gradient_deltas)
 
             if target_sync_counter <= 0:
-                self.message_all_workers('target_network_weights', self.q_func.get_target_network_weights())
+                network_weights = self.q_func.get_target_network_weights()
+                # print(f"Controller : target network synch {self.q_func.weights_checksum(network_weights)}")
+                self.message_all_workers('target_network_weights', network_weights)
                 target_sync_counter = self.options.get('target_net_sync_steps')
 
             try:
@@ -776,8 +830,9 @@ class AsyncQLearningController:
                     best_episode = episode_count
                 print(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps"
                       f" : reward = {info['total_reward']} : pid = {info['worker']}"
-                      f" : epsilon = {info['epsilon']:0.4f}"
-                      f" : min_delta = {info['min_delta']:0.2f} : max_delta = {info['max_delta']:0.2f}"
+                      f" : epsilon = {info['epsilon']:0.5f}"
+                      f" : min_q_value = {info['min_q_value']:0.5f} : max_q_value = {info['max_q_value']:0.5f}"
+                      f" : min_delta = {info['min_delta']:0.5f} : max_delta = {info['max_delta']:0.5f}"
                       f" : best_episode = {best_episode} : best_reward = {best_reward}")
 
                 if episode_count % self.options.get('stats_every') == 0:
@@ -793,12 +848,14 @@ class AsyncQLearningController:
                 print(e)
 
             if total_steps % 50000 == 0:
-                self.q_func.save_weights('async.h5')
+                self.q_func.save_weights(self.options.get('save_weights'), self.options.get('weights_file'))
 
         # close down the workers
         print(f"All done, {total_steps} steps processed - close down the workers")
         self.message_all_workers('stop', True)
         self.message_stats_collector('stop', True)
+
+        self.q_func.save_weights(self.options.get('save_weights'), self.options.get('weights_file'))
 
         time.sleep(2)   # give them a chance to stop
         try:
@@ -816,27 +873,31 @@ class AsyncQLearningController:
 def create_and_run_agent():
     timer = Timer()
     timer.start("agent")
-    agent = AsyncQLearningController([0, 1, 2, 3], options={
+    agent = AsyncQLearningController(options={
         'env_name': "ALE/Breakout-v5",
         'actions': [0, 1, 2, 3],
         'num_workers': 5,
         'total_steps': 1500000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 20000,
-        'epsilon': 1.0,
-        'epsilon_min': 0.1,
-        'epsilon_decay_span': 200000,
+        'target_net_sync_steps': 2000,
+        'network_update_batch_size': 10,
+        'adam_learning_rate': 0.00001,
+        'epsilon': 0.5,
+        'load_weights': False,
+        # 'epsilon_min': 0.1,
+        # 'epsilon_decay_span': 200000,
         'stats_every': 20
     })
     #
-    #
-    # agent = AsyncQLearningController([0, 1, 2, 3], options={
+    # agent = AsyncQLearningController(options={
     #     'env_name': "ALE/Breakout-v5",
     #     'actions': [0, 1, 2, 3],
-    #     'num_workers': 1,
-    #     'total_steps': 1500,
+    #     'num_workers': 2,
+    #     'total_steps': 2500,
     #     'async_update_freq': 5,
-    #     'target_net_sync_steps': 5000,
+    #     'target_net_sync_steps': 25,
+    #     'network_update_batch_size': 5,
+    #     'adam_learning_rate': 0.0001,
     #     'epsilon': 1.0,
     #     'epsilon_min': 0.1,
     #     'epsilon_decay_span': 50000,
