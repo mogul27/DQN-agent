@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 
+
 env = gym.make("ALE/DemonAttack-v5", render_mode='human')
 env.reset()
 

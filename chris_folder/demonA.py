@@ -102,32 +102,7 @@ class StateHistory:
             # Replace terminal index onwards with empty frames
             for i in range(4-terminal_index, 5):
                 self.data[-i] = (empty_frame, 0)
-
-
-
-    # def _states(self, state_field=0):
-    #     states = [item[state_field] for item in self.data]
-    #     # If any of the history is terminated, then clear the states for them
-    #     history_terminated = False
-    #     for i in range(len(self.data)-2, -1, -1):
-    #         history_terminated = history_terminated or self.data[i][-1]
-    #         if history_terminated:
-    #             states[i] = self.empty_state()
-    #     return states
-
-    # def get_state(self):
-    #     return self._states(0)
-
-    # def get_action(self):
-    #     return self.data[-1][1]
-
-    # def get_reward(self):
-    #     return self.data[-1][2]
-
-    # def get_next_state(self):
-    #     # next_state is the 4th field, so pass in index of 3
-    #     return self._states(3)
-
+                
 class DQNAgent:
     """Agent for Atari game DemoAttack using DQN"""
 
@@ -251,7 +226,7 @@ def main(load_weights=False):
     c = 1000 # How many steps until update parameters of networks to match (1000)
 
     # Initialise a new environment
-    env = gym.make("ALE/DemonAttack-v5", frameskip=1)
+    env = gym.make("ALE/Breakout-v5", frameskip=1)
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
 
@@ -316,7 +291,7 @@ def main(load_weights=False):
     for episode in range(max_episodes):
 
         # Reset environment now that replay buffer filled or new episode started
-        env = gym.make("ALE/DemonAttack-v5", frameskip=1)
+        env = gym.make("ALE/Breakout-v5", frameskip=1)
         state_history = StateHistory()
         # Fill state history with empty states
         state_history.empty_state()
