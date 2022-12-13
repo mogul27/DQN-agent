@@ -202,10 +202,6 @@ class AsyncQLearnerWorker(mp.Process):
         self.info_queue = info_queue
         self.options = Options(options)
 
-        self.options.default('async_update_freq', 5)
-        self.options.default('env_name', "ALE/Breakout-v5")
-        self.options.default('actions', [0, 1, 2, 3])
-
         # set these up at the start of run. Saves them being pickled/reloaded when the new process starts.
         self.tasks = None
         self.q_func = None
@@ -475,6 +471,189 @@ class AsyncQLearnerWorker(mp.Process):
                     state, action = next_state, next_action
 
 
+class AsyncStatsCollector(mp.Process):
+    """ Gather some stats for the controller when asked to do so.
+
+    Plays a game against the environment using the supplied weights.
+    """
+
+    def __init__(self, messages, options=None):
+        super().__init__()
+        # messages is a mp.Queue used to receive messages from the controller
+        self.messages = messages
+        self.options = Options(options)
+
+        # set these up at the start of run. Saves them being pickled/reloaded when the new process starts.
+        self.tasks = None
+        self.q_func = None
+        self.policy = None
+        self.num_lives = 0
+
+    def get_latest_tasks(self):
+        """ Get the latest tasks from the controller.
+
+        Overrides any existing task of the same name.
+        """
+
+        read_messages = True
+        while read_messages:
+            try:
+                msg_code, content = self.messages.get(False)
+                # print(f"worker {self.pid}: got message {msg_code}")
+                if msg_code in self.tasks:
+                    self.tasks[msg_code] = content
+                else:
+                    print(f"worker {self.pid}: ignored unrecognised message {msg_code}")
+            except Empty:
+                # Nothing to process, so just carry on
+                read_messages = False
+            except Exception as e:
+                print(f"read messages failed")
+                print(e)
+
+    def process_controller_messages(self, env):
+        """ see if there are any messages from the controller, and process accordingly
+        """
+        self.get_latest_tasks()
+        if self.tasks['stop']:
+            return
+
+        if self.tasks['play'] is not None:
+            # print(f"worker {self.pid}: update the value network weights")
+            contents = self.tasks['play']
+            self.tasks['play'] = None
+            # print('stats_collector: update weights play')
+            self.q_func.set_value_network_weights(contents['weights'])
+            self.play(env, contents)
+
+    def reformat_observation(self, obs, previous_obs=None):
+        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
+        if previous_obs is not None:
+            np.maximum(obs, previous_obs, out=obs)
+        # reduce merged greyscalegreyscale from 210,160 down to 84,84
+        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+        return resized_obs / 256
+
+    def take_step(self, env, action, skip=3):
+        previous_obs = None
+        life_lost = False
+        obs, reward, terminated, truncated, info = env.step(action)
+        if 'lives' in info:
+            if info['lives'] < self.num_lives:
+                self.num_lives = info['lives']
+                life_lost = True
+        skippy = skip
+        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
+            skippy -= 1
+            previous_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
+            if 'lives' in info:
+                if info['lives'] < self.num_lives:
+                    self.num_lives = info['lives']
+                    life_lost = True
+        # # Try adjusting the reward to penalise losing a life / or the game.
+        # if terminated:
+        #     reward = -10
+        # elif life_lost:
+        #     reward = -1
+
+        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
+
+    def play(self, env, msg_content):
+        """ play a single episode using a greedy policy """
+        # print('stats_collector: play')
+
+        total_reward = 0
+
+        obs, info = env.reset()
+
+        # State includes previous 3 frames.
+        state = [DataWithHistory.empty_state() for i in range(3)]
+        state.append(self.reformat_observation(obs))
+
+        if 'lives' in info:
+            # initialise the starting number of lives
+            self.num_lives = info['lives']
+
+        terminated = False
+        steps = 0
+        last_action = -1
+        repeated_action_count = 0
+        action_frequency = {a: 0 for a in self.q_func.actions}
+
+        while not terminated:
+            action = self.policy.select_action(state)
+            if action == last_action:
+                repeated_action_count += 1
+                # check it doesn't get stuck
+                if repeated_action_count > 1000:
+                    print(f"Play with greedy policy has probably got stuck - action {action} repeated 1000 times")
+                    break
+            else:
+                repeated_action_count = 0
+
+            action_frequency[action] += 1
+            last_obs = obs
+
+            obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+            total_reward += reward
+
+            terminated = terminated or truncated    # treat truncated as terminated
+
+            # remove the oldest frame from the state
+            state.pop(0)
+            state.append(obs)  # And add the latest obs
+
+            steps += 1
+            if steps >= 10000:
+                print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
+                break
+
+        info = f"Play : weights from episode {msg_content['episode_count']}" \
+               f" : Action frequency: {action_frequency}" \
+               f" : Reward = {total_reward}"
+
+        print(info)
+
+        with open('asynch_stats.txt', 'a') as file:
+            file.write(f"{info}\n")
+
+    def run(self):
+        print(f"I am a stats collector, my PID is {self.pid}")
+
+        # keep track of requests from the controller by recording them in the tasks dict.
+        self.tasks = {
+            'play': None,
+            'stop': None
+        }
+
+        self.q_func = FunctionApprox(self.options.get('actions'))
+        # use a policy with epsilon of 0.05 for playing to collect stats.
+        self.policy = EGreedyPolicy(self.q_func, {'epsilon': 0.05})
+        print(f"stats collector {self.pid}: Created policy epsilon={self.policy.epsilon}, "
+              f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
+
+
+        steps = 0
+        steps_since_async_update = 0
+
+        env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
+        terminated = True
+        state_and_history = None
+        action = -1
+        total_undiscounted_reward = 0
+        state_action_buffer = []
+        min_delta, max_delta = None, None
+
+        while True:
+
+            self.process_controller_messages(env)
+
+            if self.tasks['stop']:
+                print(F"stats collector {self.pid} stopping due to request from controller")
+                return
+
+
 class AsyncQLearningController:
 
     def __init__(self, actions, options=None):
@@ -484,6 +663,7 @@ class AsyncQLearningController:
         self.options.default('total_steps', 500)
         self.q_func = FunctionApprox(actions, options)
         self.workers = []
+        self.stats_collector = None
 
     def message_all_workers(self, msg_code, content):
         msg = (msg_code, content)
@@ -496,6 +676,16 @@ class AsyncQLearningController:
                 print(f"Queue put failed in controller")
                 print(e)
             # print(f"controller sent : {msg_code}")
+
+    def message_stats_collector(self, msg_code, content):
+        msg = (msg_code, content)
+        stats_queue, worker = self.stats_collector
+        try:
+            print(f"Send {msg_code} message to stats collector")
+            stats_queue.put(msg)
+        except Exception as e:
+            print(f"stats_queue put failed in controller")
+            print(e)
 
     def update_value_network_weights(self, gradient_deltas):
         value_network_weights = self.q_func.get_value_network_weights()
@@ -527,6 +717,14 @@ class AsyncQLearningController:
 
         # Send the workers the starting weights
         self.message_all_workers('reset_network_weights', self.q_func.get_value_network_weights())
+
+        # set up stats_gatherer
+        stats_queue = mp.Queue()
+        worker = AsyncStatsCollector(stats_queue, self.options)
+        worker.daemon = True    # helps tidy up child processes if parent dies.
+        worker.start()
+        self.stats_collector = (stats_queue, worker)
+
         total_steps = 0
         episode_count = 0
         target_sync_counter = self.options.get('target_net_sync_steps')
@@ -582,6 +780,10 @@ class AsyncQLearningController:
                       f" : min_delta = {info['min_delta']:0.2f} : max_delta = {info['max_delta']:0.2f}"
                       f" : best_episode = {best_episode} : best_reward = {best_reward}")
 
+                if episode_count % self.options.get('stats_every') == 0:
+                    weights = self.q_func.get_value_network_weights()
+                    self.message_stats_collector('play', {'weights': weights, 'episode_count': episode_count})
+
             except Empty:
                 # Nothing to process, so just carry on
                 pass
@@ -596,9 +798,13 @@ class AsyncQLearningController:
         # close down the workers
         print(f"All done, {total_steps} steps processed - close down the workers")
         self.message_all_workers('stop', True)
+        self.message_stats_collector('stop', True)
 
         time.sleep(2)   # give them a chance to stop
         try:
+            stats_queue, stats_worker = self.stats_collector
+            stats_worker.terminate()
+            stats_worker.join(5)
             for worker, _ in self.workers:
                 worker.terminate()
                 worker.join(5)
@@ -610,26 +816,32 @@ class AsyncQLearningController:
 def create_and_run_agent():
     timer = Timer()
     timer.start("agent")
-    # agent = AsyncQLearningController([0, 1, 2, 3], options={
-    #     'num_workers': 5,
-    #     'total_steps': 1500000,
-    #     'async_update_freq': 5,
-    #     'target_net_sync_steps': 20000,
-    #     'epsilon': 1.0,
-    #     'epsilon_min': 0.1,
-    #     'epsilon_decay_span': 200000
-    # })
-    #
-    #
     agent = AsyncQLearningController([0, 1, 2, 3], options={
-        'num_workers': 3,
-        'total_steps': 25000,
+        'env_name': "ALE/Breakout-v5",
+        'actions': [0, 1, 2, 3],
+        'num_workers': 5,
+        'total_steps': 1500000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 2500,
+        'target_net_sync_steps': 20000,
         'epsilon': 1.0,
         'epsilon_min': 0.1,
-        'epsilon_decay_span': 6000
+        'epsilon_decay_span': 200000,
+        'stats_every': 20
     })
+    #
+    #
+    # agent = AsyncQLearningController([0, 1, 2, 3], options={
+    #     'env_name': "ALE/Breakout-v5",
+    #     'actions': [0, 1, 2, 3],
+    #     'num_workers': 1,
+    #     'total_steps': 1500,
+    #     'async_update_freq': 5,
+    #     'target_net_sync_steps': 5000,
+    #     'epsilon': 1.0,
+    #     'epsilon_min': 0.1,
+    #     'epsilon_decay_span': 50000,
+    #     'stats_every': 2
+    # })
     agent.train()
     timer.stop('agent')
     elapsed = timer.event_times['agent']
