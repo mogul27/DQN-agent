@@ -78,14 +78,12 @@ class FunctionApprox:
 
     def __init__(self, options=None):
         self.options = Options(options)
-        self.options.default('network_update_batch_size', 5)
         self.options.default('adam_learning_rate', 0.0001)
 
         self.actions = self.options.get('actions')
         self.q_hat = self.build_cnn(self.options.get('adam_learning_rate'))
         self.q_hat_target = self.build_cnn(self.options.get('adam_learning_rate'))
         self.clone_weights()
-        self.update_batch_size = self.options.get('network_update_batch_size')
         self.batch = []
 
     def save_weights(self, save, file_name):
@@ -192,21 +190,6 @@ class FunctionApprox:
         new_action_values = np.array([new_action_value for (s, new_action_value) in batch])
 
         return self.q_hat.train_on_batch(states, new_action_values)
-
-    def update(self, state, new_action_values):
-        # do the update in batches
-        self.batch.append((state, new_action_values))
-        if len(self.batch) < self.update_batch_size:
-            return
-
-        states = np.array([s for (s, new_action_value) in self.batch])
-        states = self.transpose_states(states)
-        new_action_values = np.array([new_action_value for (s, new_action_value) in self.batch])
-
-        self.q_hat.train_on_batch(states, new_action_values)
-
-        # clear the batch.
-        self.batch = []
 
 
 class AsyncQLearnerWorker(mp.Process):
@@ -378,6 +361,8 @@ class AsyncQLearnerWorker(mp.Process):
 
     def run(self):
         print(f"I am a worker, my PID is {self.pid}")
+
+        self.options.default('async_update_freq', 5)
 
         # keep track of requests from the controller by recording them in the tasks dict.
         self.tasks = {
@@ -880,10 +865,9 @@ def create_and_run_agent():
         'total_steps': 1500000,
         'async_update_freq': 5,
         'target_net_sync_steps': 2000,
-        'network_update_batch_size': 10,
         'adam_learning_rate': 0.00001,
         'epsilon': 0.5,
-        'load_weights': False,
+        # 'load_weights': False,
         # 'epsilon_min': 0.1,
         # 'epsilon_decay_span': 200000,
         'stats_every': 20
@@ -896,7 +880,6 @@ def create_and_run_agent():
     #     'total_steps': 2500,
     #     'async_update_freq': 5,
     #     'target_net_sync_steps': 25,
-    #     'network_update_batch_size': 5,
     #     'adam_learning_rate': 0.0001,
     #     'epsilon': 1.0,
     #     'epsilon_min': 0.1,
