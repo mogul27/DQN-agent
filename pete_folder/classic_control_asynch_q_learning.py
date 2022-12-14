@@ -136,65 +136,48 @@ class FunctionApprox:
 
         try:
             # TODO : give all the layers and models names to indicate worker / controller ?
-            # inputs = Input((84, 84, 4))
-            # conv_1 = Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu')(inputs)
-            # conv_2 = Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu')(conv_1)
-            # conv_3 = Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu')(conv_2)
-            # flatten = Flatten()(conv_3)
-            # dense_1 = Dense(512, activation='relu')(flatten)
-            # outputs = Dense(4, activation=None)(dense_1)
-            # cnn = Model(inputs=inputs, outputs=outputs)
-            cnn = Sequential()
-            # TODO : The async paper uses fewer and smaller.
-            cnn.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(84, 84, 4)))
-            cnn.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
-            cnn.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
-            cnn.add(Flatten())
-            cnn.add(Dense(512, activation='relu'))
-            cnn.add(Dense(4, activation=None))
-            cnn.summary()
+
+            inputs = Input(self.options.get('observation_shape'))
+            dense_1 = Dense(512, activation='relu')(inputs)
+            dense_2 = Dense(64, activation='relu')(dense_1)
+            outputs = Dense(len(self.options.get('actions')), activation='linear')(dense_1)
+            network = Model(inputs=inputs, outputs=outputs)
+
+            network.summary()
 
             # compile the model
-            cnn.compile(loss=Huber(delta=1.0), optimizer=Adam(learning_rate=adam_learning_rate))
+            network.compile(loss=Huber(delta=1.0), optimizer=Adam(learning_rate=adam_learning_rate))
 
-            return cnn
+            return network
         except Exception as e:
             print(f"failed to create model : {e}")
 
-    def transpose_states(self, states):
-        # states is a 4D array (N, X,Y,Z) with
-        # N = number of states,
-        # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
-        # and also add another level.
-        return np.transpose(np.array(states), (0, 2, 3, 1))
-
     def get_value(self, state, action):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
+        prediction = self.q_hat.predict_on_batch(np.expand_dims(state, axis=0))
         return prediction[0][action]
 
     def get_all_action_values(self, states):
-        return self.q_hat.predict_on_batch(self.transpose_states(states))
+        return self.q_hat.predict_on_batch(states)
 
     def get_target_value(self, state, action):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
+        prediction = self.q_hat_target.predict_on_batch(np.expand_dims(state, axis=0))
         return prediction[0][action]
 
     def get_max_target_value(self, state):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
+        prediction = self.q_hat_target.predict_on_batch(np.expand_dims(state, axis=0))
         return max(prediction[0])
 
     def get_max_target_values(self, states):
-        predictions = self.q_hat_target.predict_on_batch(self.transpose_states(states))
+        predictions = self.q_hat_target.predict_on_batch(states)
         return predictions.max(axis=1)
 
     def best_action_for(self, state):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
+        prediction = self.q_hat.predict_on_batch(np.expand_dims(state, axis=0))
         return np.argmax(prediction[0])
 
     def update_batch(self, batch):
         # do the update in batches
         states = np.array([s for (s, new_action_value) in batch])
-        states = self.transpose_states(states)
         new_action_values = np.array([new_action_value for (s, new_action_value) in batch])
 
         return self.q_hat.train_on_batch(states, new_action_values)
@@ -323,39 +306,6 @@ class AsyncQLearnerWorker(mp.Process):
         losses = self.q_func.update_batch(updates)
         return losses, min_q, max_q
 
-    def reformat_observation(self, obs, previous_obs=None):
-        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        if previous_obs is not None:
-            np.maximum(obs, previous_obs, out=obs)
-        # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
-        return resized_obs / 256
-
-    def take_step(self, env, action, skip=3):
-        previous_obs = None
-        life_lost = False
-        obs, reward, terminated, truncated, info = env.step(action)
-        if 'lives' in info:
-            if info['lives'] < self.num_lives:
-                self.num_lives = info['lives']
-                life_lost = True
-        skippy = skip
-        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
-            skippy -= 1
-            previous_obs = obs
-            obs, reward, terminated, truncated, info = env.step(action)
-            if 'lives' in info:
-                if info['lives'] < self.num_lives:
-                    self.num_lives = info['lives']
-                    life_lost = True
-        # # Try adjusting the reward to penalise losing a life / or the game.
-        # if terminated:
-        #     reward = -10
-        # elif life_lost:
-        #     reward = -1
-
-        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
-
     def run(self):
         print(f"I am a worker, my PID is {self.pid}")
 
@@ -382,9 +332,9 @@ class AsyncQLearnerWorker(mp.Process):
         steps = 0
         steps_since_async_update = 0
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
+        register_gym_mods()
+        env = gym.make(self.options.get('env_name'))
         terminated = True
-        state_and_history = None
         action = -1
         total_undiscounted_reward = 0
         state_action_buffer = []
@@ -421,37 +371,22 @@ class AsyncQLearnerWorker(mp.Process):
 
             if self.initialised:
                 if terminated:
-                    obs, info = env.reset()
-
-                    # State includes previous 3 frames.
-                    state = [DataWithHistory.empty_state() for i in range(3)]
-                    state.append(self.reformat_observation(obs))
+                    state, info = env.reset()
 
                     action = self.policy.select_action(state)
-
-                    if 'lives' in info:
-                        # initialise the starting number of lives
-                        self.num_lives = info['lives']
 
                     total_undiscounted_reward = 0
                     terminated = False
 
                 else:
-                    # take a step and get the next action from the policy.
-
                     # Take action A, observe R, S'
-                    obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                    next_state, reward, terminated, truncated, info = env.step(action)
                     terminated = terminated or truncated    # treat truncated as terminated
-
-                    # take the last 3 frames from state as the history for next_state
-                    next_state = state[1:]
-                    next_state.append(obs)  # And add the latest obs
 
                     # Choose A' from S' using policy derived from q_func
                     next_action = self.policy.select_action(next_state)
 
-                    state_action_buffer.append((np.array(state), action, reward, np.array(next_state),
-                                                terminated or life_lost))
+                    state_action_buffer.append((state, action, reward, next_state, terminated))
 
                     steps += 1
                     steps_since_async_update += 1
@@ -536,43 +471,11 @@ class AsyncStatsCollector(mp.Process):
             # print(f"worker {self.pid}: update the value network weights")
             contents = self.tasks['play']
             self.tasks['play'] = None
-            # print('stats_collector: update weights play')
+            print(f"stats_collector: update weights play  {self.q_func.weights_checksum(contents['weights'])}")
             self.q_func.set_value_network_weights(contents['weights'])
+            updated_weights = self.q_func.get_value_network_weights()
+            print(f"stats_collector: updated weights play  {self.q_func.weights_checksum(updated_weights)}")
             self.play(env, contents)
-
-    def reformat_observation(self, obs, previous_obs=None):
-        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        if previous_obs is not None:
-            np.maximum(obs, previous_obs, out=obs)
-        # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
-        return resized_obs
-        # return resized_obs / 256
-
-    def take_step(self, env, action, skip=3):
-        previous_obs = None
-        life_lost = False
-        obs, reward, terminated, truncated, info = env.step(action)
-        if 'lives' in info:
-            if info['lives'] < self.num_lives:
-                self.num_lives = info['lives']
-                life_lost = True
-        skippy = skip
-        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
-            skippy -= 1
-            previous_obs = obs
-            obs, reward, terminated, truncated, info = env.step(action)
-            if 'lives' in info:
-                if info['lives'] < self.num_lives:
-                    self.num_lives = info['lives']
-                    life_lost = True
-        # # Try adjusting the reward to penalise losing a life / or the game.
-        # if terminated:
-        #     reward = -10
-        # elif life_lost:
-        #     reward = -1
-
-        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
 
     def play(self, env, msg_content):
         """ play a single episode using a greedy policy """
@@ -580,21 +483,13 @@ class AsyncStatsCollector(mp.Process):
 
         total_reward = 0
 
-        obs, info = env.reset()
-
-        # State includes previous 3 frames.
-        state = [DataWithHistory.empty_state() for i in range(3)]
-        state.append(self.reformat_observation(obs))
-
-        if 'lives' in info:
-            # initialise the starting number of lives
-            self.num_lives = info['lives']
+        state, info = env.reset()
 
         terminated = False
         steps = 0
         last_action = -1
         repeated_action_count = 0
-        action_frequency = {a: 0 for a in self.q_func.actions}
+        action_frequency = {a: 0 for a in self.options.get('actions')}
 
 
         while not terminated:
@@ -609,19 +504,13 @@ class AsyncStatsCollector(mp.Process):
                 repeated_action_count = 0
 
             action_frequency[action] += 1
-            last_obs = obs
 
-            obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+            state, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
-
             terminated = terminated or truncated    # treat truncated as terminated
 
-            # remove the oldest frame from the state
-            state.pop(0)
-            state.append(obs)  # And add the latest obs
-
             steps += 1
-            if steps >= 10000:
+            if steps >= 100000:
                 print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                 break
 
@@ -665,7 +554,8 @@ class AsyncStatsCollector(mp.Process):
         steps = 0
         steps_since_async_update = 0
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
+        register_gym_mods()
+        env = gym.make(self.options.get('env_name'))
         terminated = True
         state_and_history = None
         action = -1
@@ -801,7 +691,7 @@ class AsyncQLearningController:
                 # synch the target weights with the value weights, then let the workers know.
                 self.q_func.synch_value_and_target_weights()
                 network_weights = self.q_func.get_target_network_weights()
-                # print(f"Controller : target network synch {self.q_func.weights_checksum(network_weights)}")
+                print(f"Controller : target network synch {self.q_func.weights_checksum(network_weights)}")
                 self.message_all_workers('target_network_weights', network_weights)
                 target_sync_counter = self.options.get('target_net_sync_steps')
 
@@ -854,24 +744,38 @@ class AsyncQLearningController:
             print("Failed to close the workers cleanly")
             print(e)
 
+def register_gym_mods():
+    gym.envs.registration.register(
+        id='MountainCarMyEasyVersion-v0',
+        entry_point='gym.envs.classic_control.mountain_car:MountainCarEnv',
+        max_episode_steps=500,      # MountainCar-v0 uses 200
+        reward_threshold=-110.0
+    )
 
 def create_and_run_agent():
+
     timer = Timer()
     timer.start("agent")
     agent = AsyncQLearningController(options={
-        'env_name': "ALE/Breakout-v5",
-        'actions': [0, 1, 2, 3],
+        # 'env_name': "Acrobot-v1",
+        # 'observation_shape': (6, ),
+        # 'actions': [0, 1, 2],
+        # 'env_name': "MountainCar-v0",
+        'env_name': "MountainCarMyEasyVersion-v0",
+        'observation_shape': (2, ),
+        'actions': [0, 1, 2],
         'num_workers': 5,
-        'total_steps': 1500000,
+        'total_steps': 150000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 2000,
-        'adam_learning_rate': 0.00001,
+        'target_net_sync_steps': 50,
+        'adam_learning_rate': 0.001,
         'discount_factor': 0.99,
-        'epsilon': 0.5,
         'load_weights': False,
-        'epsilon_min': 0.1,
-        'epsilon_decay_span': 200000,
-        'stats_every': 20
+        'stats_epsilon': 0.01,
+        'epsilon': 0.5,
+        'epsilon_min': 0.01,
+        'epsilon_decay_span': 10000,
+        'stats_every': 10
     })
     #
     # agent = AsyncQLearningController(options={
