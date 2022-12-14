@@ -5,6 +5,9 @@ from dqn_agent import DQNAgent
 from dqn_utilities import StateHistory
 from helper_functions import fill_replay_buffer
 
+import sys
+np.set_printoptions(threshold=sys.maxsize)
+
 
 def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size: int=100000
         ,max_episodes: int=1000, starting_epsilon: int=1, epsilon_decay: float=9e-6, final_epsilon: int=0.1
@@ -25,7 +28,6 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
 
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
-    print(type(wrapped_env))
 
     # Initialise history object for initial wandering
     random_history = StateHistory()
@@ -69,7 +71,7 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
     # Use all_steps to track when to update target network across episodes
     all_steps = 0
 
-    for episode in range(max_episodes):
+    for episode_counter in range(max_episodes):
 
         # Reset environment now that replay buffer filled or new episode started
         env = gym.make(game, frameskip=1)
@@ -79,29 +81,32 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
 
         wrapped_env = gym.wrappers.AtariPreprocessing(env)
         prev_state, info  = wrapped_env.reset()
+
         state_history.data.pop(0)
         state_history.data.append((prev_state, 0))
 
         # Get lives at previous step
         prev_lives = info['lives']
+
+        # Set terminal and truncated for loop
         terminal = False
+        truncated = False
 
         step=0
         rewards=[]
         # Collect non-adjusted rewards
         real_rewards = []
 
-        while not terminal:
+        # Perform an episode of training
+        while not terminal and not truncated:
             
             network_input = state_history.get_states()
             action = agent.epsilon_greedy_selection(num_actions,
                                                     possible_actions, network_input)
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
-
             real_rewards.append(reward)
             # Adjust rewards if lives lost and set prev_lives = lives
-            reward, prev_lives = agent.adjust_reward_lives(reward, info, prev_lives)
-
+            # reward, prev_lives = agent.adjust_reward_lives(reward, info, prev_lives)
             rewards.append(reward)
 
             # Create a copy of the state history object so it is not mutated in memory
@@ -172,12 +177,11 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
             
             if epsilon > final_epsilon:
                 epsilon = epsilon - epsilon_decay
-                            # If decay takes it under 0.1
+                # If decay takes it under 0.1
             if epsilon < final_epsilon:
                 epsilon = final_epsilon
 
         total_episode_rewards.append(sum(real_rewards))
-        episode_counter += 1
         step_number.append(step)
         print("episode {} complete. Total episode Reward: {}".format(episode_counter, sum(real_rewards)))
 
@@ -199,8 +203,9 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
 if __name__ == "__main__":
 
     # Override values
-    experience_buffer_size = 32
+    #experience_buffer_size = 32
+    epsilon_decay=9e-5
 
-    main(load_weights=False, minibatch_size=32, experience_buffer_size=32, max_episodes=1000, 
-    starting_epsilon=1, epsilon_decay=9e-6, final_epsilon=0.1, gamma=0.99, update_steps=1000
+    main(load_weights=False, minibatch_size=32, experience_buffer_size=100000, max_episodes=1000, 
+    starting_epsilon=1, epsilon_decay=9e-5, final_epsilon=0.1, gamma=0.99, update_steps=1000
     , game="ALE/Breakout-v5")

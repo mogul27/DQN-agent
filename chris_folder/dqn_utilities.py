@@ -62,9 +62,14 @@ class StateHistory:
         """Reformat a state with history to be fed into cnn"""
 
         states = np.array(states)
-        stacked_history = np.stack(states, axis=0)
-        reshaped_history = np.transpose(stacked_history)
-        network_reshaped_history = reshaped_history.reshape(1, 84, 84, 4)
+        # print(states.shape)
+        #stacked_history = np.stack(states, axis=0)
+        states = np.moveaxis(states, 0, -1)
+        # print(stacked_history.shape)
+        #reshaped_history = np.transpose(stacked_history)
+        network_reshaped_history = states.reshape(-1, 84, 84, 4)
+
+        #print(network_reshaped_history)
 
         return network_reshaped_history
     
