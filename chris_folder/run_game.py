@@ -8,7 +8,6 @@ from helper_functions import fill_replay_buffer
 import sys
 np.set_printoptions(threshold=sys.maxsize)
 
-
 def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size: int=100000
         ,max_episodes: int=1000, starting_epsilon: int=1, epsilon_decay: float=9e-6, final_epsilon: int=0.1
         ,gamma: float=0.99, update_steps: int=1000, game: str="ALE/Breakout-v5"):
@@ -37,7 +36,7 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
 
     # Append prev_state to random_history
     random_history.data.pop(0)
-    random_history.data.append((prev_state, 0))
+    random_history.data.append((prev_state, False))
 
     # Collect info about environment and actions for constructing network outputs
     num_actions = wrapped_env.action_space.n
@@ -83,7 +82,7 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
         prev_state, info  = wrapped_env.reset()
 
         state_history.data.pop(0)
-        state_history.data.append((prev_state, 0))
+        state_history.data.append((prev_state, False))
 
         # Get lives at previous step
         prev_lives = info['lives']
@@ -118,7 +117,7 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
             next_buffer_history = copy.deepcopy(state_history)
 
             agent.experience_buffer.add(buffer_history, action, reward, next_buffer_history)
-            prev_state = next_state
+            prev_state = copy.deepcopy(next_state)
 
             minibatch = agent.experience_buffer.get_random_data(minibatch_size)
 
@@ -129,28 +128,22 @@ def main(load_weights: bool=False, minibatch_size:int=32, experience_buffer_size
                 
                 # Unpack experience
                 # Label with exp to avoid overwriting current state
-                prev_history_exp, action_exp, reward_exp, next_buffer_history = experience
-
-                # Prevent single state histories from spanning multiple episodes before training
-                # using these histories
-                buffer_history.stop_terminal_continuity()
-                next_buffer_history.stop_terminal_continuity()
+                prev_history_exp, action_exp, reward_exp, next_buffer_history_exp = experience
 
                 # Reshape next_state to be passed into network
-                network_input = next_buffer_history.get_states()
+                network_input = next_buffer_history_exp.get_states()
                 
                 # Retrieve q2 value for the best action
-                best_action_val = agent.get_q2_preds(network_input)
+                best_action_val = agent.get_q2_preds(network_input, all_steps)
 
                 # Retrieve q1 predictions which function as y_hat
                 target_preds = agent.get_q1_action_values(network_input)
                 
-                if next_buffer_history.is_terminal():
+                if next_buffer_history_exp.is_terminal():
                     target_preds[action_exp] = reward_exp
                 else:
                     # Retrieve best possible action according to target network
                     target_preds[action_exp] = reward_exp + gamma*best_action_val
-
 
                 # Reshape prev_state to be passed into network
                 network_input = prev_history_exp.get_states()
@@ -207,5 +200,5 @@ if __name__ == "__main__":
     epsilon_decay=9e-5
 
     main(load_weights=False, minibatch_size=32, experience_buffer_size=100000, max_episodes=1000, 
-    starting_epsilon=1, epsilon_decay=9e-5, final_epsilon=0.1, gamma=0.99, update_steps=1000
+    starting_epsilon=1, epsilon_decay=9e-6, final_epsilon=0.1, gamma=0.99, update_steps=500
     , game="ALE/Breakout-v5")

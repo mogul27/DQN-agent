@@ -62,14 +62,8 @@ class StateHistory:
         """Reformat a state with history to be fed into cnn"""
 
         states = np.array(states)
-        # print(states.shape)
-        #stacked_history = np.stack(states, axis=0)
-        states = np.moveaxis(states, 0, -1)
-        # print(stacked_history.shape)
-        #reshaped_history = np.transpose(stacked_history)
-        network_reshaped_history = states.reshape(-1, 84, 84, 4)
-
-        #print(network_reshaped_history)
+        reshaped_history = np.transpose(states)
+        network_reshaped_history = reshaped_history.reshape(-1, 84, 84, 4)
 
         return network_reshaped_history
     
@@ -84,18 +78,20 @@ class StateHistory:
 
         return empty_frame
     
-    def stop_terminal_continuity(self):
-        """If a state within a history is terminal, replace all states from that frame forward
-        to prevent continuity issues across a single history"""
+    # def stop_terminal_continuity(self):
+    #     """If a state within a history is terminal, replace all states from that frame forward
+    #     to prevent continuity issues across a single history"""
 
-        # Create ordered list of terminal flags and find index of first one (default behaviour of .index)
-        terminal_list = [state_terminal_pair[1] for state_terminal_pair in self.data]
+    #     # Create ordered list of terminal flags and find index of first one (default behaviour of .index)
+    #     terminal_list = [state_terminal_pair[1] for state_terminal_pair in self.data]
         
-        # create empty frame to replace terminal frames
-        empty_frame = self.create_empty_frame()
+    #     # create empty frame to replace terminal frames
+    #     empty_frame = self.create_empty_frame()
 
-        if 1 in terminal_list:
-            terminal_index = terminal_list.index(1)
-            # Replace terminal index onwards with empty frames
-            for i in range(4-terminal_index, 5):
-                self.data[-i] = (empty_frame, 0)
+    #     if any(terminal_list):
+    #         terminal_index = terminal_list.index(True)
+    #         print("Index:", terminal_index)
+    #         # Replace terminal index onwards with empty frames
+    #         for i in range(terminal_index-4, 0):
+    #             print(i)
+    #             self.data[i] = (empty_frame, False)

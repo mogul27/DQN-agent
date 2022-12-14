@@ -22,7 +22,6 @@ class DQNAgent:
         the environment"""
         
         action_value_network = Sequential()
-
         action_value_network.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
         action_value_network.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
         action_value_network.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
@@ -61,7 +60,7 @@ class DQNAgent:
 
         return a_star
 
-    def get_q2_preds(self, network_input):
+    def get_q2_preds(self, network_input, steps):
         """Retrieve the best action to take in given state"""
         q_vals = self.q2.predict_on_batch(network_input)
         best_action = np.argmax(q_vals[0]) 
@@ -71,7 +70,6 @@ class DQNAgent:
 
     def get_q1_action_values(self, network_input):
         q_vals = self.q1.predict_on_batch(network_input)[0]
-
         return q_vals
     
     def epsilon_greedy_selection(self, num_actions: int, possible_actions: list,
