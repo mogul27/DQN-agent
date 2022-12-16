@@ -259,6 +259,7 @@ class AgentBreakoutDqn:
 
             steps = 0
 
+            actions_until_replay = 4
             while not terminated and not truncated:
                 # sync value and target weights at the start of an episode
                 sync_weights_count -= 1
@@ -285,7 +286,10 @@ class AgentBreakoutDqn:
 
                 # TODO : make the replay steps less frequent?
                 # Replay steps from the memory to update the function approximation (q_func)
-                self.replay_steps()
+                actions_until_replay -= 1
+                if terminated or actions_until_replay <= 0:
+                    self.replay_steps()
+                    actions_until_replay = 4
 
                 steps += 1
                 if steps >= 100000:
@@ -531,10 +535,10 @@ def main():
         # render='human',
         # epsilon=0.5,
         # epsilon_decay_span=0.05,
-        training_cycles=2,
-        num_episodes=2,
+        training_cycles=200,
+        num_episodes=20,
         # load_weights="weights.h5",
-        replay_init_size=10
+        # replay_init_size=10
         # work_dir="breakout_temp"
     )
     # run(render='human', training_cycles=5, num_episodes=0, load_weights="batched_updates_2.h5",
