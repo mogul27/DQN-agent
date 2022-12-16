@@ -449,6 +449,16 @@ class AgentDqn:
         #     max_q_value = min(max_q, max_q_value)
 
 
+def register_gym_mods():
+    """ Register alternatives with gym
+    """
+    gym.envs.registration.register(
+        id='MountainCarMyEasyVersion-v0',
+        entry_point='gym.envs.classic_control.mountain_car:MountainCarEnv',
+        max_episode_steps=200,      # MountainCar-v0 uses 200
+        reward_threshold=-110.0
+    )
+
 
 def run(options):
 
@@ -462,8 +472,7 @@ def run(options):
     timer = Timer()
     stats = []
 
-    env = gym.make(options.get('env_name'),
-                   render_mode=options.get('render'))
+    env = gym.make(options.get('env_name'), render_mode=options.get('render'))
 
     agent = AgentDqn(options)
 

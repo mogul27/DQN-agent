@@ -26,6 +26,15 @@ class OptionsTest(unittest.TestCase):
         options.default('two', 34)
         self.assertEqual(2, options.get('two'))
 
+    def test_one_off_default_in_get(self):
+        options = Options({'one': 1, 'two': 2})
+
+        # Doesn't use the default value for options that are set
+        self.assertEqual(1, options.get('one', 27))
+
+        # Use the default value for options that are not set
+        self.assertEqual(27, options.get('three', 27))
+
     def test_create_from_options(self):
         options_1 = Options({'one': 1, 'two': 2})
         options_2 = Options(options_1)
