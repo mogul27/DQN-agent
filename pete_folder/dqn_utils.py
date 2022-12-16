@@ -187,12 +187,12 @@ class Options:
         if name not in self.values:
             self.set(name, value)
 
-    def get(self, name):
-        """ Get value for name, return None if the name not in options.
+    def get(self, name, default=None):
+        """ Get value for name, return default value if the name not in options.
         """
         if name in self.values:
             return self.values[name]
-        return None
+        return default
 
     def set(self, name, value):
         """ Set the value for the option name
