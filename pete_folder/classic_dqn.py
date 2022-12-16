@@ -3,20 +3,14 @@
 import gym
 import numpy as np
 import random
-import math
 import os
 from pathlib import Path
 import pickle
 from collections import deque
 import matplotlib.pyplot as plt
 
-import gc
-import cv2
-import keras
-from keras import backend as K
-from keras.models import Sequential
 from keras import Model
-from keras.layers import Dense, Conv2D, Flatten, Input
+from keras.layers import Dense, Input
 from keras.losses import Huber
 from keras.optimizers import Adam
 from dqn_utils import Timer, Options
@@ -103,7 +97,7 @@ class FunctionApprox:
         # TODO : consider moving towards the value weights, rather than a complete replacement.
         sync_fraction = self.options.get('sync_fraction', 1.0)
         for i in range(len(target_weights)):
-            target_weights[i] = (1 -sync_fraction) * target_weights[i] + sync_fraction * value_weights[i]
+            target_weights[i] = (1 - sync_fraction) * target_weights[i] + sync_fraction * value_weights[i]
         self.q_hat_target.set_weights(target_weights)
 
     def build_neural_network(self):
@@ -209,14 +203,14 @@ class AgentDqn:
 
     def load_replay_memory(self):
         if self.work_dir is not None:
-            replay_memory_file = self.work_dir / 'replay_memory.pickle'
+            replay_memory_file = Path(self.work_dir / 'replay_memory.pickle')
             if os.path.isfile(replay_memory_file):
                 with open(replay_memory_file, 'rb') as file:
                     self.replay_memory = pickle.load(file)
 
     def save_replay_memory(self):
         if self.work_dir is not None:
-            replay_memory_file = self.work_dir / 'replay_memory.pickle'
+            replay_memory_file = Path(self.work_dir / 'replay_memory.pickle')
             with open(replay_memory_file, 'wb') as file:
                 pickle.dump(self.replay_memory, file)
 
