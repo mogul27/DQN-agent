@@ -39,14 +39,15 @@ class Actor:
         x = dense(inputs)
         x = Dense(12, activation="relu")(x)
         # initialiser initialises output layer uniformly
-        initialiser = RandomUniform(minval=-1.0, maxval=1.0)
+        mu_initialiser = RandomUniform(minval=-1.0, maxval=1.0)
+        var_initialiser = RandomUniform(minval=-1.0, maxval=1.0)
 
         # Two heads to network - one for mean of distribution, one for variance
         mu = Dense(num_actions, activation="tanh",
-                   kernel_initializer=initialiser)(x)
+                   kernel_initializer=mu_initialiser)(x)
 
         var = Dense(num_actions, activation="softplus",
-                    kernel_initializer=initialiser)(x)
+                    kernel_initializer=var_initialiser)(x)
 
         optimiser = Adam(learning_rate=learning_rate)
 
