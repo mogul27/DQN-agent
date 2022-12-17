@@ -20,7 +20,7 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
     """
 
     # Create Environment and get environment attributes
-    env = gym.make("BipedalWalker-v3", hardcore=False, render_mode='human')
+    env = gym.make("BipedalWalker-v3", hardcore=False)
     state_dims = env.observation_space.shape
 
     # Initialise actor and citic + corresponding networks
@@ -77,19 +77,25 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
             prev_state = copy.deepcopy(next_state)
             episode_reward += reward
             steps += 1
-            env.render()
             
         episode_reward_list.append(episode_reward)
         print("Episode: {}, Total Reward: {}, Steps: {}"
               .format(episode_count, episode_reward, steps))
         # Record
-        with open('rewards.txt', 'w') as reward_txt:
-            reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
-                episode_count, episode_reward, steps))
+
+        if episode_count == 0:
+            with open('rewards.txt', 'w') as reward_txt:
+                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
+                    episode_count, episode_reward, steps))
+        else:
+            with open('rewards.txt', 'a') as reward_txt:
+                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
+                    episode_count, episode_reward, steps))
     
-    # end of num_episodes
-    critic.save_network_weights()
-    actor.save_network_weights()
+        # save weights every 100 episodes
+        if episode_count % 100 == 0:
+            critic.save_network_weights()
+            actor.save_network_weights()
 
 
 
