@@ -376,16 +376,6 @@ class AsyncQLearnerWorker(mp.Process):
                 # We've processed enough steps to do an update.
                 weights_before = self.q_func.get_value_network_weights()
                 loss, min_q_for_a, max_q_for_a,  min_q, max_q = self.process_batch(state_action_buffer)
-                temp = {
-                    'min_q_for_a': min_q_for_a,
-                    'max_q_for_a': max_q_for_a,
-                    'min_q': min_q,
-                    'max_q': max_q,
-                    'min_q_value_for_a': min_q_value_for_a,
-                    'max_q_value_for_a': max_q_value_for_a,
-                    'min_q_value': min_q_value,
-                    'max_q_value': max_q_value,
-                }
                 if min_q_value_for_a is None:
                     min_q_value_for_a = min_q_for_a
                     max_q_value_for_a = max_q_for_a
@@ -527,7 +517,7 @@ class AsyncStatsCollector(mp.Process):
 
             episode = contents['episode_count']
             play_rewards = []
-            while len(play_rewards) <  self.options.get('play_avg', 2):
+            while len(play_rewards) < self.options.get('play_avg', 2):
                 play_rewards.append(self.play(env, episode))
 
             avg_play_reward = sum(play_rewards) / len(play_rewards)
