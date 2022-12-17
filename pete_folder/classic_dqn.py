@@ -607,8 +607,8 @@ def main():
     # options['replay_max_size'] = replay_init_size*2
     # options['plot_title'] = f"Reward and training epsilon. replay={replay_init_size} : {2*replay_init_size}"
 
-    # # TODO: also decay down to 150 (0.75, 0.25, 150), (0.75, 0.01, 150),
-    for tau in [0.0001, 0.001, 0.01, 0.1, 1.0]:
+    # TODO run the 0.1 and 1.0
+    for tau in [0.1, 1.0]:
         for mini_batch in [32, 64, 128, 256]:
             options['sync_tau'] = tau
             options['mini_batch'] = mini_batch
