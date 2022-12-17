@@ -213,8 +213,6 @@ class AgentDqn:
         self.replay_memory = ReplayMemory(max_len=100000, history=3, file_name=replay_memory_file)
         self.max_delta = None
         self.min_delta = None
-        self.total_episodes = 0
-
 
     def take_step(self, env, action, skip=3):
         previous_obs = None
@@ -392,8 +390,7 @@ class AgentDqn:
                     print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                     break
 
-            self.total_episodes += 1
-            print(f"    Episode {self.total_episodes} : {steps} steps. Epsilon {self.policy.epsilon:0.3f}"
+            print(f"    Episode {episode} : {steps} steps. Epsilon {self.policy.epsilon:0.3f}"
                   f" : Total reward {total_undiscounted_reward}")
             frame_count += steps
             agent_rewards.append(total_undiscounted_reward)
@@ -632,12 +629,13 @@ def main():
         # 'render': "human",
         # 'observation_shape': (84, 84, 4),
         'actions': [0, 1, 2, 3],
+        'start_episode_num': 1,
         'episodes': 1000,
         'mini_batch_size': 32,
         'actions_before_replay': 4,
         'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
-        'sync_weights_count': 1000,
+        'sync_weights_count': 1000,  # TODO : rename this to target_sync_counter to match asynch code
         # 'sync_tau': 0.0001,
         'load_weights': True,
         'save_weights': True,
@@ -656,8 +654,10 @@ def main():
     # options['episodes'] = 1
     # options['render'] = 'human'
 
-    options['env_name'] = "ALE/Pong-v5"
-    options['actions'] = [0, 1, 2, 3, 4, 5]
+    options['start_episode_num'] = 1001
+    options['epsilon'] = 0.1
+    # options['env_name'] = "ALE/Pong-v5"
+    # options['actions'] = [0, 1, 2, 3, 4, 5]
 
 
     run(options)
