@@ -3,7 +3,7 @@ import numpy as np
 import copy
 from networks import Actor, Critic
 
-def main(gamma :float=0.9, actor_lr: float=0.001,
+def main(gamma :float=0.99, actor_lr: float=0.001,
          critic_lr: float=0.001, num_actions: int=4,
          num_episodes: int=1000) -> None:
     """Run main loop for training A2C network on bipedal walker env
@@ -41,9 +41,8 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
 
         prev_state, info = env.reset()
         terminal = False
-        truncated = False
 
-        while not terminal and not truncated:
+        while not terminal:
             # Inner loop = 1 step from here
             
             # Take action using Actor and retrieve distribution mean and variance
@@ -89,7 +88,7 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
                     episode_count, episode_reward, steps))
         else:
             with open('rewards.txt', 'a') as reward_txt:
-                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
+                reward_txt.write("\n Episode: {}, Total Reward: {}, Steps: {}".format(
                     episode_count, episode_reward, steps))
     
         # save weights every 100 episodes
@@ -101,7 +100,7 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
 
 if __name__ == "__main__":
 
-    main(gamma=0.9, actor_lr=0.001, critic_lr=0.001, num_actions=4,
+    main(gamma=0.99, actor_lr=0.001, critic_lr=0.001, num_actions=4,
          num_episodes=1000)
 
 

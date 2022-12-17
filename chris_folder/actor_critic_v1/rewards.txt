@@ -1,0 +1,17 @@
+Episode: 0, Total Reward: -10.531362799417831, Steps: 1600
+ Episode: 1, Total Reward: -12.40475518884945, Steps: 1600
+ Episode: 2, Total Reward: -113.56966165623881, Steps: 164
+ Episode: 3, Total Reward: -111.05381006401498, Steps: 81
+ Episode: 4, Total Reward: -111.50724138612719, Steps: 73
+ Episode: 5, Total Reward: -111.26989801826848, Steps: 75
+ Episode: 6, Total Reward: -111.53992331766845, Steps: 85
+ Episode: 7, Total Reward: -111.1215147605294, Steps: 65
+ Episode: 8, Total Reward: -111.05947135322045, Steps: 61
+ Episode: 9, Total Reward: -110.82615400852666, Steps: 63
+ Episode: 10, Total Reward: -110.63968346686242, Steps: 65
+ Episode: 11, Total Reward: -111.20665654662244, Steps: 74
+ Episode: 12, Total Reward: -111.5309018774056, Steps: 73
+ Episode: 13, Total Reward: -111.16075494558721, Steps: 66
+ Episode: 14, Total Reward: -111.32799535206053, Steps: 55
+ Episode: 15, Total Reward: -111.01391195121602, Steps: 65
+ Episode: 16, Total Reward: -111.71132996483529, Steps: 82
