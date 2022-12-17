@@ -4,6 +4,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 from keras.initializers import RandomUniform
+from keras import Input, Model
 
 
 class Actor:
@@ -29,19 +30,30 @@ class Actor:
         Returns:
         None
         """
+
+        # Use keras functional API for multi-headed network required for
+        # continuous action spaces
         
-        model = Sequential()
-        model.add(Dense(24, input_shape=state_dims, activation="relu"))
-        model.add(Dense(12, input_shape=state_dims, activation="relu"))
-        # For Bipedal Walker - output layer tanh gives 4 actions each in range
-        # -1 to 1, initialiser initialises output layer uniformly
+        inputs = Input(shape=state_dims)
+        dense = Dense(24, input_shape=state_dims, activation="relu")
+        x = dense(inputs)
+        x = Dense(12, activation="relu")(x)
+        # initialiser initialises output layer uniformly
         initialiser = RandomUniform(minval=-1.0, maxval=1.0)
-        model.add(Dense(num_actions, activation="tanh",
-                        kernel_initializer=initialiser))
+
+        # Two heads to network - one for mean of distribution, one for variance
+        mu = Dense(num_actions, activation="tanh",
+                   kernel_initializer=initialiser)(x)
+
+        var = Dense(num_actions, activation="softplus",
+                    kernel_initializer=initialiser)(x)
 
         optimiser = Adam(learning_rate=learning_rate)
-        model.compile(loss="rmse", optimizer = optimiser)
 
+        model = Model(inputs, [mu, var])
+        # Use mean absolute error due to negative log_probs
+        model.compile(loss="mean_absolute_error", optimizer = optimiser)
+        
         self.network = model
 
         return None
@@ -60,33 +72,54 @@ class Actor:
 
     def predict(self, state: np.array) -> np.array:
         """Given an environment state, return an array of continuous actions
+        with the mean and standard deviation of the distribution from which
+        the actions are sampled.
 
         Parameters:
         state (np.array): environment state returned by env.step()
 
         Returns:
-        actions (np.array): Array of continuous actions for the agent to take
+        sampled_actions (np.array): Array of continuous actions for the agent to take
         """
         
         state = np.expand_dims(state, axis=0)
-        actions = self.network.predict_on_batch(state)
-        actions = actions[0] # Make actions 1-D array
+        mu, var = self.network.predict_on_batch(state)
+        # Make mu and var 1-D arrays
+        mu, var = mu[0], var[0]
+        std = np.sqrt(var)
+        sampled_actions = np.random.normal(mu, std)
+        # clip actions to keep them valid
+        sampled_actions = np.clip(sampled_actions, -1, 1)
 
-        return actions
+        return mu, std, sampled_actions
 
-    def train(self, state: np.array, adv_function: np.array) -> np.array:
+    def train(self, state: np.array, adv_function: np.array, mu: np.array, 
+              var: np.array, actions:np.array) -> np.array:
         """Adjust network parameters to perform Actor update step
 
         Parameters:
         state (np.array): environment state returned by env.step()
         adv_function (np.array): Advantage calculated using Critic valuation
         of action against state value
+        mu (np.array): mean value for action distributions
+        var (np.array): variance of distribution for action distributions
+        actions (np.array): actions taken by the agent
         
         Returns:
         None
         """
 
-        self.network.train_on_batch(state, adv_function)
+        # Actor needs to get the probability density info
+        # because we are using a continuous action
+        # Prevent var elements from being 0 to avoid dividing by 0
+        var = np.clip(var, 1e-6, None)
+        term1 = -((actions - mu)**2) / (2*var)
+        term2 = -np.log(np.sqrt(2*np.pi*var))
+        log_probs = term1+term2
+        actor_loss = log_probs*adv_function        
+
+        state = np.expand_dims(state, axis=0)
+        self.network.train_on_batch(state, actor_loss)
 
         return None
 
@@ -112,14 +145,14 @@ class Critic:
         Returns:
         None
         """
-        
+
         model = Sequential()
         model.add(Dense(24, input_shape=state_dims, activation="relu"))
         model.add(Dense(12, input_shape=state_dims, activation="relu"))
         model.add(Dense(1, activation="linear"))
 
         optimiser = Adam(learning_rate=learning_rate)
-        model.compile(loss="rmse", optimizer = optimiser)
+        model.compile(loss="mean_squared_error", optimizer = optimiser)
 
         self.network = model
 
@@ -151,8 +184,8 @@ class Critic:
         Returns:
         None
         """
-
-        self.network.train_on_batch(state, td_target)
+        state = np.expand_dims(state, axis=0)
+        self.network.train_on_batch([state], [td_target])
 
 
     def save_network_weights(self) -> None:

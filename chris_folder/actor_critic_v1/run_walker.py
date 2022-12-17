@@ -44,9 +44,10 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
         truncated = False
 
         while not terminal and not truncated:
+            # Inner loop = 1 step from here
             
-            # Take action using Actor
-            continuous_actions = actor.predict(prev_state)
+            # Take action using Actor and retrieve distribution mean and variance
+            continuous_actions, mu, var = actor.predict(prev_state)
             next_state, reward, terminal, truncated, info = env.step(continuous_actions)
 
             # Value current and next state with critic (v(St))
@@ -60,18 +61,20 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
             # Calc extra reward for action at state vs mean reward for action in
             # that state which is the same as a full TD update to existing value
             # See lecture material Week 3
-            adv_function = td_target - prev_state_value
-            
-            # Update network parameters
-            # Actor gets adv_function as an evaluation of its actions 
-            # It updates using the Q value adjusted for advantage to make it A2C
-            actor.train(prev_state, adv_function)
+            adv_function_approx = td_target - prev_state_value
 
-            # Critic gets the td_target so it updates its estimate of the state value
+            # Update network parameters 
+
+            # Critic gets the adv_function as the loss is this squared (Uses rmse)
             # as in TD learning (Lectures week 3)
-            critic.train(prev_state, td_target)
+            critic.train(prev_state, adv_function_approx)
+            
+            # Actor updates using the Q value adjusted for advantage to make it A2C
+            # Negative lo loss of sample distribution calclated in train function
+            actor.train(prev_state, adv_function_approx, mu, var, continuous_actions)
 
-            prev_state = copy.deepcopy(prev_state)
+            # Increment steps and set prev_state = next_state
+            prev_state = copy.deepcopy(next_state)
             episode_reward += reward
             steps += 1
 
