@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import copy
 from networks import Actor, Critic
+import matplotlib.pyplot as plt
 
 def main(gamma :float=0.99, actor_lr: float=0.001,
          critic_lr: float=0.001, num_actions: int=4,
@@ -96,6 +97,15 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         if episode_count % 100 == 0:
             critic.save_network_weights()
             actor.save_network_weights()
+    
+    # After num_episodes of episodes have run
+    episode_axis = [i for i in range(num_episodes)]
+    plt.plot(episode_axis, episode_reward_list)
+    plt.xlabel("Episode")
+    plt.xticks(episode_axis)
+    plt.ylabel("Episode Reward")
+    plt.show()
+
 
 
 
