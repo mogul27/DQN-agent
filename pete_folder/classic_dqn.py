@@ -95,9 +95,9 @@ class FunctionApprox:
         value_weights = self.q_hat.get_weights()
         target_weights = self.q_hat_target.get_weights()
         # TODO : consider moving towards the value weights, rather than a complete replacement.
-        sync_fraction = self.options.get('sync_fraction', 1.0)
+        sync_tau = self.options.get('sync_tau', 1.0)
         for i in range(len(target_weights)):
-            target_weights[i] = (1 - sync_fraction) * target_weights[i] + sync_fraction * value_weights[i]
+            target_weights[i] = (1 - sync_tau) * target_weights[i] + sync_tau * value_weights[i]
         self.q_hat_target.set_weights(target_weights)
 
     def build_neural_network(self):
@@ -202,7 +202,7 @@ class AgentDqn:
         self.total_episodes = 0
 
     def load_replay_memory(self):
-        if self.work_dir is not None:
+        if self.options.get('replay_load') and self.work_dir is not None:
             replay_memory_file = Path(self.work_dir / 'replay_memory.pickle')
             if os.path.isfile(replay_memory_file):
                 with open(replay_memory_file, 'rb') as file:
@@ -306,10 +306,10 @@ class AgentDqn:
             self.min_delta = None
 
             steps = 0
-            actions_before_replay = 4
+            actions_before_replay = self.options.get('actions_before_replay', 1)
 
             while not terminated and not truncated:
-                # sync value and target weights at the start of an episode
+                # sync value and target weights based on sync_weights_count option.
                 sync_weights_count -= 1
                 if sync_weights_count <= 0:
                     self.q_func.synch_value_and_target_weights()
@@ -331,7 +331,7 @@ class AgentDqn:
                 actions_before_replay -= 1
                 if terminated or actions_before_replay <= 0:
                     self.replay_steps()
-                    actions_before_replay = 4
+                    actions_before_replay = self.options.get('actions_before_replay', 1)
 
                 steps += 1
                 if steps >= 100000:
@@ -421,12 +421,12 @@ class AgentDqn:
         losses = self.q_func.update_batch(updates)
         return losses, min_d, max_d, min_q, max_q
 
-    def replay_steps(self, replay_num=32):
+    def replay_steps(self):
         """ Select items from the replay_memory and use them to update the q_func, value function approximation.
 
         :param replay_num: Number of random steps to replay - currently includes the latest step too.
         """
-        indexes = np.random.randint(0, high=len(self.replay_memory), size=replay_num)
+        indexes = np.random.randint(0, high=len(self.replay_memory), size=self.options.get('mini_batch_size', 32))
         batch = [self.replay_memory[i] for i in indexes]
         loss, min_d, max_d, min_q, max_q = self.process_batch(batch)
         # if min_delta is None:
@@ -578,23 +578,28 @@ def main():
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'episodes': 1000,
+        'episodes': 500,
+        'mini_batch_size': 32,
+        'actions_before_replay': 1,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
-        'sync_weights_count': 400,
-        'sync_fraction': 1.0,
+        'sync_weights_count': 1,
+        'sync_tau': 0.0001,
         'load_weights': False,
         'save_weights': False,
-        'replay_init_size': 1000,
-        'replay_max_size': 2000,
+        'replay_init_size': 10000,
+        'replay_max_size': 250000,
+        'replay_load': False,
         'stats_epsilon': 0.01,
         'epsilon': 0.75,
-        'epsilon_min': 0.1,
+        'epsilon_min': 0.25,
         'epsilon_decay_episodes': 350,
         'stats_every': 10
     }
 
-    run(options)
+    # options['replay_init_size'] = replay_init_size
+
+    # run(options)
     # try different options
     # for replay_init_size in [1000, 2000, 4000, 8000]:
     # replay_init_size = 100
@@ -603,13 +608,12 @@ def main():
     # options['plot_title'] = f"Reward and training epsilon. replay={replay_init_size} : {2*replay_init_size}"
 
     # # TODO: also decay down to 150 (0.75, 0.25, 150), (0.75, 0.01, 150),
-    # for epsilon_values in [(0.75, 0.1, 350), (0.75, 0.1, 2500), (0.01, 0.01, None)]:
-    #     options['epsilon'] = epsilon_values[0]
-    #     options['epsilon_min'] = epsilon_values[1]
-    #     options['epsilon_decay_episodes'] = epsilon_values[2]
-    #     options['plot_title'] = f"Reward and training epsilon. Values {epsilon_values}"
-    #     options['episodes'] = 2500
-    #     run(options)
+    for tau in [0.0001, 0.001, 0.01, 0.1, 1.0]:
+        for mini_batch in [32, 64, 128, 256]:
+            options['sync_tau'] = tau
+            options['mini_batch'] = mini_batch
+            options['plot_title'] = f"Actions before mini_batch=16. sync_tau={tau}, mini_batch={mini_batch}"
+            run(options)
 
 
 if __name__ == '__main__':
