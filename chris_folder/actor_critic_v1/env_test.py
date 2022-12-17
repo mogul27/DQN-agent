@@ -9,7 +9,7 @@ num_actions = env.action_space
 state_dims = env.observation_space.shape
 
 print(num_actions)
-print(state_dims)
+print(type(state_dims))
 # for i in range(100):
 #     action = np.random.uniform(-1.0, 1.0, size=4)
 #     state, reward, terminal, _, _ = env.step(action)
