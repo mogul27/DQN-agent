@@ -41,6 +41,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
         prev_state, info = env.reset()
         terminal = False
+        truncated = False
 
         while not terminal and not truncated:
             # Inner loop = 1 step from here

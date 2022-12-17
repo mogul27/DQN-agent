@@ -1,2 +1,3 @@
-Episode: 0, Total Reward: -119.53877732135419, Steps: 88
- Episode: 1, Total Reward: -100.64638073910587, Steps: 70
+Episode: 0, Total Reward: -101.68511943621871, Steps: 62
+ Episode: 1, Total Reward: -101.58891748751638, Steps: 69
+ Episode: 2, Total Reward: -101.78412877941629, Steps: 70
