@@ -7,12 +7,10 @@ import random
 from collections import deque
 from statistics import mean
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 
 import gym
-import cv2
 
-from dqn_utils import Options, DataWithHistory, Timer
+from dqn_utils import Options, Timer
 
 # import keras
 from keras.models import Sequential
@@ -90,24 +88,38 @@ class FunctionApprox:
         self.synch_value_and_target_weights()
         self.batch = []
 
-    def save_weights(self, save, file_name):
-        if save and file_name is not None:
-            self.q_hat.save_weights(file_name)
+        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
+        if self.work_dir is not None:
+            # location for files.
+            self.work_dir = Path(self.work_dir)
+            if not self.work_dir.exists():
+                self.work_dir.mkdir(parents=True, exist_ok=True)
 
-    def load_weights(self, load, file_name):
-        if load and file_name is not None:
-            try:
-                if Path(file_name).exists():
-                    self.q_hat.load_weights(file_name)
-                    self.q_hat_target.load_weights(file_name)
-                    print(f"both value and target weights loaded from file {file_name}")
-            except Exception as e:
-                print(f"failed to load weights from {file_name}")
-                print(e)
+    def save_weights(self):
+        if self.options.get('save_weights', False) and self.work_dir is not None:
+            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.h5")
+            weights_file_name = Path(weights_file_name).name
+            weights_file = self.work_dir / weights_file_name
+            self.q_hat.save_weights(weights_file)
+
+    def load_weights(self):
+        if self.options.get('load_weights', False) and self.work_dir is not None:
+            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.h5")
+            weights_file_name = Path(weights_file_name).name
+            weights_file = self.work_dir / weights_file_name
+            if weights_file.exists():
+                self.q_hat.load_weights(weights_file)
+                self.q_hat_target.load_weights(weights_file)
 
     def synch_value_and_target_weights(self):
         # Copy the weights from action_value network to the target action_value network
-        self.q_hat_target.set_weights(self.q_hat.get_weights())
+        value_weights = self.q_hat.get_weights()
+        target_weights = self.q_hat_target.get_weights()
+        # TODO : consider moving towards the value weights, rather than a complete replacement.
+        sync_tau = self.options.get('sync_tau', 1.0)
+        for i in range(len(target_weights)):
+            target_weights[i] = (1 - sync_tau) * target_weights[i] + sync_tau * value_weights[i]
+        self.q_hat_target.set_weights(target_weights)
 
     def get_value_network_weights(self):
         return self.q_hat.get_weights()
@@ -315,8 +327,6 @@ class AsyncQLearnerWorker(mp.Process):
             updates.append((s, qsa_action_value))
 
         losses = self.q_func.update_batch(updates)
-        if min_q_for_a < min_q:
-            print(f"that's not right.")
         return losses, min_q_for_a, max_q_for_a, min_q, max_q
 
     def run(self):
@@ -388,8 +398,6 @@ class AsyncQLearnerWorker(mp.Process):
                 else:
                     min_q_value = min(min_q, min_q_value)
                     max_q_value = max(max_q, max_q_value)
-                if min_q_value_for_a < min_q_value:
-                    print('that is not right that')
                 weights_after = self.q_func.get_value_network_weights()
                 weight_deltas = [w_after - w_before for w_before, w_after in zip(weights_before, weights_after)]
                 # send the gradient deltas back to the controller
@@ -475,10 +483,9 @@ class AsyncStatsCollector(mp.Process):
         self.best_episode = 0
         self.last_n_scores = None
         self.stats = None
-        self.fig = None
-        self.ax = None
-        self.plot_line = None
-        self.ani = None
+        self.work_dir = None
+        self.stats_file = None
+        self.info_file = None
 
     def get_latest_tasks(self):
         """ Get the latest tasks from the controller.
@@ -520,12 +527,14 @@ class AsyncStatsCollector(mp.Process):
 
             episode = contents['episode_count']
             play_rewards = []
-            while len(play_rewards) < 2:
+            while len(play_rewards) <  self.options.get('play_avg', 2):
                 play_rewards.append(self.play(env, episode))
 
             avg_play_reward = sum(play_rewards) / len(play_rewards)
             self.stats.append((episode, avg_play_reward))
-            # self.plot_rewards()
+            with open(self.stats_file, 'a') as file:
+                file.write(f"{episode}, {round(avg_play_reward,2):0.2f}\n")
+            self.plot_rewards()
 
     def plot_rewards(self):
         # Plot a graph showing reward against episode, and epsilon
@@ -544,10 +553,9 @@ class AsyncStatsCollector(mp.Process):
 
         fig.tight_layout()
 
-        plt.savefig(self.options.get('env_name') + '/' + 'async_rewards.pdf')
-        plt.savefig(self.options.get('env_name') + '/' + 'async_rewards.png')
-        plt.close('all')
-
+        plt.savefig(self.work_dir / 'async_rewards.pdf')
+        plt.savefig(self.work_dir / 'async_rewards.png')
+        plt.close('all')    # matplotlib holds onto all the figures if we don't close them.
 
     def play(self, env, episode_count):
         """ play a single episode using a greedy policy
@@ -596,18 +604,16 @@ class AsyncStatsCollector(mp.Process):
 
         self.last_n_scores.append(total_reward)
 
-        info = f"Play : weights from episode {episode_count}" \
-               f" : Reward = {total_reward}" \
-               f" : epsilon: {self.policy.epsilon:0.4f}" \
-               f" : value_net: {self.q_func.get_value_network_checksum():0.4f}" \
-               f" : Action freq: {action_frequency}" \
-               f" : Best episode = {self.best_episode} : Best reward = {self.best_reward}" \
-               f" : Avg reward (last {len(self.last_n_scores)}) = {mean(self.last_n_scores)}"
+        print(f"Play : weights from episode {episode_count}"
+              f" : Reward = {total_reward}"
+              f" : epsilon: {self.policy.epsilon:0.4f}"
+              f" : value_net: {self.q_func.get_value_network_checksum():0.4f}"
+              f" : Action freq: {action_frequency}"
+              f" : Best episode = {self.best_episode} : Best reward = {self.best_reward}"
+              f" : Avg reward (last {len(self.last_n_scores)}) = {mean(self.last_n_scores)}")
 
-        print(info)
-
-        with open(f"{self.options.get('env_name')}.txt", 'a') as file:
-            file.write(f"{info}\n")
+        with open(self.info_file, 'a') as file:
+            file.write(f'{episode_count}, {total_reward}, {self.policy.epsilon}, "{action_frequency}"\n')
 
         return total_reward
 
@@ -617,6 +623,18 @@ class AsyncStatsCollector(mp.Process):
         self.options.default('stats_epsilon', 0.05)
         self.last_n_scores = deque(maxlen=5)
         self.stats = []
+        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
+        # location for files.
+        self.work_dir = Path(self.work_dir)
+        if not self.work_dir.exists():
+            self.work_dir.mkdir(parents=True, exist_ok=True)
+        time_stamp = time.strftime("%Y%m%d-%H%M%S")
+        self.stats_file = self.work_dir / f"rewards-{time_stamp}.csv"
+        with open(self.stats_file, 'a') as file:
+            file.write(f"episode, reward\n")
+        self.info_file = self.work_dir / f"info-{time_stamp}.csv"
+        with open(self.info_file, 'a') as file:
+            file.write(f"episode, reward, epsilon, value_net_checksum, action_frequency\n")
 
         # keep track of requests from the controller by recording them in the tasks dict.
         self.tasks = {
@@ -654,13 +672,8 @@ class AsyncQLearningController:
 
     def __init__(self, options=None):
         self.options = Options(options)
-        self.options.default('num_workers', 1)
-        self.options.default('total_steps', 500)
-        self.options.default('weights_file', self.options.get('env_name'))
-        self.options.default('load_weights', True)
-        self.options.default('save_weights', True)
         self.q_func = FunctionApprox(self.options)
-        self.q_func.load_weights(self.options.get('load_weights'), self.options.get('weights_file'))
+        self.q_func.load_weights()
         self.workers = []
         self.stats_collector = None
 
@@ -709,7 +722,7 @@ class AsyncQLearningController:
 
         # set up the workers
 
-        for _ in range(self.options.get('num_workers')):
+        for _ in range(self.options.get('num_workers', 1)):
             worker_queue = mp.Queue()
             worker = AsyncQLearnerWorker(worker_queue, network_gradients_queue, info_queue, self.options)
             worker.daemon = True    # helps tidy up child processes if parent dies.
@@ -730,11 +743,11 @@ class AsyncQLearningController:
 
         total_steps = 0
         episode_count = 0
-        target_sync_counter = self.options.get('target_net_sync_steps')
+        target_sync_counter = self.options.get('target_net_sync_steps', 1)
         best_reward = None
         best_episode = 0
 
-        while total_steps < self.options.get('total_steps'):
+        while episode_count < self.options.get('episodes', 1):
 
             gradient_messages = []
             try:
@@ -768,6 +781,7 @@ class AsyncQLearningController:
                     if len(gradient_messages) > 1:
                         # multiple gradient messages - need to take an average...
                         # print(f"Multiple gradient messages ({len(gradient_messages)}), so take an average")
+                        # TODO: check how we should handle this
                         for i in range(len(gradient_deltas)):
                             gradient_deltas[i] /= len(gradient_messages)
                     self.update_value_network_weights(gradient_deltas)
@@ -778,7 +792,7 @@ class AsyncQLearningController:
                 network_weights = self.q_func.get_target_network_weights()
                 # print(f"Controller : target network synch {self.q_func.weights_checksum(network_weights)}")
                 self.message_all_workers('target_network_weights', network_weights)
-                target_sync_counter = self.options.get('target_net_sync_steps')
+                target_sync_counter = self.options.get('target_net_sync_steps', 1)
 
             try:
                 # print(f"controller about to read from info queue")
@@ -797,6 +811,7 @@ class AsyncQLearningController:
                       f" : best_reward (episode) = {best_reward} ({best_episode})")
 
                 if episode_count % self.options.get('stats_every') == 0:
+                    self.q_func.save_weights()
                     weights = self.q_func.get_value_network_weights()
                     self.message_stats_collector('play', {'weights': weights, 'episode_count': episode_count})
 
@@ -808,24 +823,22 @@ class AsyncQLearningController:
                 print(f"Failed to read info_queue")
                 print(e)
 
-            if total_steps % 50000 == 0:
-                self.q_func.save_weights(self.options.get('save_weights'), self.options.get('weights_file'))
-
         # close down the workers
         print(f"All done, {total_steps} steps processed - close down the workers")
         self.message_all_workers('stop', True)
         self.message_stats_collector('stop', True)
 
-        self.q_func.save_weights(self.options.get('save_weights'), self.options.get('weights_file'))
+        self.q_func.save_weights()
 
-        time.sleep(2)   # give them a chance to stop
+        time.sleep(5)   # give them a chance to stop
         try:
-            stats_queue, stats_worker = self.stats_collector
-            stats_worker.terminate()
-            stats_worker.join(5)
+            # make sure they've all stopped OK
             for worker, _ in self.workers:
                 worker.terminate()
                 worker.join(5)
+            stats_queue, stats_worker = self.stats_collector
+            stats_worker.terminate()
+            stats_worker.join(5)
         except Exception as e:
             print("Failed to close the workers cleanly")
             print(e)
@@ -855,32 +868,21 @@ def create_and_run_agent():
         'observation_shape': (4, ),
         'actions': [0, 1],
         'num_workers': 1,
-        'total_steps': 40000,
+        'episodes': 500,
         'async_update_freq': 4,
-        'target_net_sync_steps': 400,
+        'target_net_sync_steps': 50,
+        'sync_tau': 0.5,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
         'load_weights': False,
+        'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 0.75,
         'epsilon_min': 0.1,
         'epsilon_decay_episodes': 350,
-        'stats_every': 25
+        'stats_every': 10
     })
-    #
-    # agent = AsyncQLearningController(options={
-    #     'env_name': "ALE/Breakout-v5",
-    #     'actions': [0, 1, 2, 3],
-    #     'num_workers': 2,
-    #     'total_steps': 2500,
-    #     'async_update_freq': 5,
-    #     'target_net_sync_steps': 25,
-    #     'adam_learning_rate': 0.0001,
-    #     'epsilon': 1.0,
-    #     'epsilon_min': 0.1,
-    #     'epsilon_decay_span': 50000,
-    #     'stats_every': 2
-    # })
+
     agent.train()
     timer.stop('agent')
     elapsed = timer.event_times['agent']
