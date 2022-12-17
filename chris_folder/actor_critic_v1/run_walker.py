@@ -33,7 +33,7 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
     episode_reward_list = []
 
     # Episode begins here
-    for episode in range(num_episodes):
+    for episode_count in range(num_episodes):
 
         # Initialise variables to track episode progress and performance
         steps = 0
@@ -78,7 +78,19 @@ def main(gamma :float=0.9, actor_lr: float=0.001,
             episode_reward += reward
             steps += 1
             env.render()
-            print(steps)
+            
+        episode_reward_list.append(episode_reward)
+        print("Episode: {}, Total Reward: {}, Steps: {}"
+              .format(episode_count, episode_reward, steps))
+        # Record
+        with open('rewards.txt', 'w') as reward_txt:
+            reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
+                episode_count, episode_reward, steps))
+    
+    # end of num_episodes
+    critic.save_network_weights()
+    actor.save_network_weights()
+
 
 
 if __name__ == "__main__":
