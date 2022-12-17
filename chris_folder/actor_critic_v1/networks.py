@@ -35,7 +35,7 @@ class Actor:
         # continuous action spaces
         
         inputs = Input(shape=state_dims)
-        dense = Dense(128, input_shape=state_dims, activation="relu")
+        dense = Dense(128, activation="relu")
         x = dense(inputs)
         x = Dense(128, activation="relu")(x)
         # initialiser initialises output layer uniformly
@@ -149,7 +149,7 @@ class Critic:
 
         model = Sequential()
         model.add(Dense(128, input_shape=state_dims, activation="relu"))
-        model.add(Dense(128, input_shape=state_dims, activation="relu"))
+        model.add(Dense(128, activation="relu"))
         model.add(Dense(1, activation="linear"))
 
         optimiser = Adam(learning_rate=learning_rate)

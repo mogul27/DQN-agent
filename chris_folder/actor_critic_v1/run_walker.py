@@ -101,7 +101,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 if __name__ == "__main__":
 
     main(gamma=0.99, actor_lr=0.001, critic_lr=0.001, num_actions=4,
-         num_episodes=1000)
+         num_episodes=10000)
 
 
 
