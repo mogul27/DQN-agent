@@ -8,6 +8,7 @@ import pickle
 from enum import Enum
 from collections import defaultdict
 
+""" Deprecated implementation. Will be deleted soon """
 
 def test_env(env):
     # test the environment 
