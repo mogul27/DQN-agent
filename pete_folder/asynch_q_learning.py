@@ -408,7 +408,6 @@ class AsyncQLearnerWorker(mp.Process):
 
         env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
         terminated = True
-        state_and_history = None
         action = -1
         total_undiscounted_reward = 0
         state_action_buffer = []
@@ -753,9 +752,8 @@ class AsyncStatsCollector(mp.Process):
         steps = 0
         steps_since_async_update = 0
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale", frameskip=1)
+        env = gym.make(self.options.get('env_name'), obs_type="grayscale")
         terminated = True
-        state_and_history = None
         action = -1
         total_undiscounted_reward = 0
         state_action_buffer = []
@@ -950,16 +948,17 @@ def create_and_run_agent():
     timer.start("agent")
     agent = AsyncQLearningController(options={
         'env_name': "ALE/Breakout-v5",
+        'work_dir': 'async/breakout',
         'actions': [0, 1, 2, 3],
-        'num_workers': 5,
-        'total_steps': 1500000,
+        'num_workers': 4,
+        'episodes': 2000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 2000,
-        'adam_learning_rate': 0.00001,
+        'target_net_sync_steps': 200,
+        'sync_tau': 0.9,
+        'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
-        'epsilon': 0.5,
         'load_weights': False,
-        'save_weights': False,
+        'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 0.75,
         'epsilon_min': 0.1,

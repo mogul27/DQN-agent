@@ -857,11 +857,11 @@ def create_and_run_agent():
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'num_workers': 1,
+        'num_workers': 3,
         'episodes': 500,
         'async_update_freq': 4,
-        'target_net_sync_steps': 50,
-        'sync_tau': 0.5,
+        'target_net_sync_steps': 20,
+        'sync_tau': 1.0,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
         'load_weights': False,
@@ -869,7 +869,7 @@ def create_and_run_agent():
         'stats_epsilon': 0.01,
         'epsilon': 0.75,
         'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 350,
+        'epsilon_decay_episodes': 150,
         'stats_every': 10
     })
 
