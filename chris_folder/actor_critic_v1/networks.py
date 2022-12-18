@@ -53,7 +53,7 @@ class Actor:
 
         model = Model(inputs, [mu, var])
         # Use mean absolute error due to negative log_probs
-        model.compile(loss="mean_absolute_error", optimizer = optimiser)
+        model.compile(loss="mean_absolute_error", optimizer=optimiser)
         
         self.network = model
 
@@ -92,7 +92,7 @@ class Actor:
         # clip actions to keep them valid
         sampled_actions = np.clip(sampled_actions, -1, 1)
 
-        return mu, std, sampled_actions
+        return mu, var, sampled_actions
 
     def train(self, state: np.array, adv_function: np.array, mu: np.array, 
               var: np.array, actions:np.array) -> np.array:
@@ -112,11 +112,13 @@ class Actor:
 
         # Actor needs to get the probability density info
         # because we are using a continuous action
+
         # Prevent var elements from being 0 to avoid dividing by 0
         var = np.clip(var, 1e-6, None)
         term1 = -((actions - mu)**2) / (2*var)
         term2 = -np.log(np.sqrt(2*np.pi*var))
         log_probs = term1+term2
+        # Changed loss to +ve
         actor_loss = log_probs*adv_function        
 
         state = np.expand_dims(state, axis=0)
@@ -186,7 +188,7 @@ class Critic:
         None
         """
         state = np.expand_dims(state, axis=0)
-        self.network.train_on_batch([state], [td_target])
+        self.network.train_on_batch(state, td_target)
 
 
     def save_network_weights(self) -> None:

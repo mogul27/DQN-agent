@@ -48,7 +48,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             # Inner loop = 1 step from here
             
             # Take action using Actor and retrieve distribution mean and variance
-            continuous_actions, mu, var = actor.predict(prev_state)
+            mu, var, continuous_actions = actor.predict(prev_state)
             next_state, reward, terminal, truncated, info = env.step(continuous_actions)
 
             # Value current and next state with critic (v(St))
@@ -66,9 +66,9 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
             # Update network parameters 
 
-            # Critic gets the adv_function as the loss is this squared (Uses rmse)
+            # Critic gets the td_target as the loss is this squared (Uses rmse)
             # as in TD learning (Lectures week 3)
-            critic.train(prev_state, adv_function_approx)
+            critic.train(prev_state, td_target)
             
             # Actor updates using the Q value adjusted for advantage to make it A2C
             # Negative lo loss of sample distribution calclated in train function
@@ -111,7 +111,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
 if __name__ == "__main__":
 
-    main(gamma=0.99, actor_lr=0.001, critic_lr=0.001, num_actions=4,
+    main(gamma=0.99, actor_lr=0.001, critic_lr=0.0002, num_actions=4,
          num_episodes=10000)
 
 
