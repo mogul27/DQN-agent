@@ -67,6 +67,95 @@ class EGreedyPolicy:
         return random.choice(self.possible_actions)
 
 
+class FunctionApprox:
+
+    def __init__(self, actions, update_batch_size=32, adam_learning_rate=0.0001):
+        self.actions = actions
+        self.q_hat = self.build_cnn(adam_learning_rate)
+        self.q_hat_target = self.build_cnn(adam_learning_rate)
+        self.clone_weights()
+        self.update_batch_size = update_batch_size
+        self.batch = []
+
+    def release_memory(self):
+        """ The keras models created seem to hang onto memory even after they've gone out of scope. Try and force
+        the clean up of the memory."""
+        del self.q_hat
+        del self.q_hat_target
+        gc.collect()
+        K.clear_session()
+
+    def save_weights(self, file_name):
+        self.q_hat.save_weights(file_name)
+
+    def load_weights(self, file_name):
+        if Path(file_name).exists():
+            self.q_hat.load_weights(file_name)
+            self.q_hat_target.load_weights(file_name)
+
+    def clone_weights(self):
+        # Copy the weights from action_value network to the target action_value network
+        self.q_hat_target.set_weights(self.q_hat.get_weights())
+
+    def build_cnn(self, adam_learning_rate):
+        # Crete CNN model to predict actions for states.
+
+        cnn = Sequential()
+        # TODO : Find the best arrangement for the ConvNet
+        cnn.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(84, 84, 4)))
+        cnn.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
+        cnn.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
+        cnn.add(Flatten())
+        cnn.add(Dense(512, activation='relu'))
+        cnn.add(Dense(4, activation=None))
+        cnn.summary()
+
+        # compile the model
+        optimizer = keras.optimizers.Adam(learning_rate=adam_learning_rate)
+        cnn.compile(loss=Huber(delta=1.0), optimizer=optimizer)
+
+        return cnn
+
+    def transpose_states(self, states):
+        # states is a 4D array (N, X,Y,Z) with
+        # N = number of states,
+        # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
+        # and also add another level.
+        return np.transpose(np.array(states), (0, 2, 3, 1))
+
+    def get_value(self, state, action):
+        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
+        return prediction[0][action]
+
+    def get_all_action_values(self, states):
+        return self.q_hat.predict_on_batch(self.transpose_states(states))
+
+    def get_target_value(self, state, action):
+        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
+        return prediction[0][action]
+
+    def get_max_target_value(self, state):
+        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
+        return max(prediction[0])
+
+    def get_max_target_values(self, states):
+        predictions = self.q_hat_target.predict_on_batch(self.transpose_states(states))
+        return predictions.max(axis=1)
+
+    def best_action_for(self, state):
+        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
+        return np.argmax(prediction[0])
+
+    def update(self, batch):
+        # do the update in batches
+        states = np.array([s for (s, new_action_value) in batch])
+        states = self.transpose_states(states)
+        new_action_values = np.array([new_action_value for (s, new_action_value) in batch])
+
+        return self.q_hat.train_on_batch(states, new_action_values)
+
+
+
 class AgentBreakoutDqn:
 
     def __init__(self, load_weights=None, work_dir=None, epsilon=None, epsilon_decay_span=None, epsilon_min=None,
@@ -259,6 +348,7 @@ class AgentBreakoutDqn:
 
             steps = 0
 
+            actions_until_replay = 4
             while not terminated and not truncated:
                 # sync value and target weights at the start of an episode
                 sync_weights_count -= 1
@@ -285,7 +375,10 @@ class AgentBreakoutDqn:
 
                 # TODO : make the replay steps less frequent?
                 # Replay steps from the memory to update the function approximation (q_func)
-                self.replay_steps()
+                actions_until_replay -= 1
+                if terminated or actions_until_replay <= 0:
+                    self.replay_steps()
+                    actions_until_replay = 4
 
                 steps += 1
                 if steps >= 100000:
@@ -357,100 +450,6 @@ class AgentBreakoutDqn:
         Try and force the clean up of the memory."""
         self.q_func.release_memory()
 
-
-class FunctionApprox:
-
-    def __init__(self, actions, update_batch_size=32, adam_learning_rate=0.0001):
-        self.actions = actions
-        self.q_hat = self.build_cnn(adam_learning_rate)
-        self.q_hat_target = self.build_cnn(adam_learning_rate)
-        self.clone_weights()
-        self.update_batch_size = update_batch_size
-        self.batch = []
-
-    def release_memory(self):
-        """ The keras models created seem to hang onto memory even after they've gone out of scope. Try and force
-        the clean up of the memory."""
-        del self.q_hat
-        del self.q_hat_target
-        gc.collect()
-        K.clear_session()
-
-    def save_weights(self, file_name):
-        self.q_hat.save_weights(file_name)
-
-    def load_weights(self, file_name):
-        if Path(file_name).exists():
-            self.q_hat.load_weights(file_name)
-            self.q_hat_target.load_weights(file_name)
-
-    def clone_weights(self):
-        # Copy the weights from action_value network to the target action_value network
-        self.q_hat_target.set_weights(self.q_hat.get_weights())
-
-    def build_cnn(self, adam_learning_rate):
-        # Crete CNN model to predict actions for states.
-
-        cnn = Sequential()
-        # TODO : Find the best arrangement for the ConvNet
-        cnn.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(84, 84, 4)))
-        cnn.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
-        cnn.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
-        cnn.add(Flatten())
-        cnn.add(Dense(512, activation='relu'))
-        cnn.add(Dense(4, activation=None))
-        cnn.summary()
-
-        # compile the model
-        optimizer = keras.optimizers.Adam(learning_rate=adam_learning_rate)
-        cnn.compile(loss=Huber(delta=1.0), optimizer=optimizer)
-
-        return cnn
-
-    def transpose_states(self, states):
-        # states is a 4D array (N, X,Y,Z) with
-        # N = number of states,
-        # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
-        # and also add another level.
-        return np.transpose(np.array(states), (0, 2, 3, 1))
-
-    def get_value(self, state, action):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
-        return prediction[0][action]
-
-    def get_all_action_values(self, states):
-        return self.q_hat.predict_on_batch(self.transpose_states(states))
-
-    def get_target_value(self, state, action):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
-        return prediction[0][action]
-
-    def get_max_target_value(self, state):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
-        return max(prediction[0])
-
-    def get_max_target_values(self, states):
-        predictions = self.q_hat_target.predict_on_batch(self.transpose_states(states))
-        return predictions.max(axis=1)
-
-    def best_action_for(self, state):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
-        return np.argmax(prediction[0])
-
-    def update(self, state, new_action_values):
-        # do the update in batches
-        self.batch.append((state, new_action_values))
-        if len(self.batch) < self.update_batch_size:
-            return
-
-        states = np.array([s for (s, new_action_value) in self.batch])
-        states = self.transpose_states(states)
-        new_action_values = np.array([new_action_value for (s, new_action_value) in self.batch])
-
-        self.q_hat.train_on_batch(states, new_action_values)
-
-        # clear the batch.
-        self.batch = []
 
 
 def run(render=None, training_cycles=1, num_episodes=1, epsilon=None, epsilon_decay_span=None, epsilon_min=None,
@@ -531,10 +530,10 @@ def main():
         # render='human',
         # epsilon=0.5,
         # epsilon_decay_span=0.05,
-        training_cycles=2,
-        num_episodes=2,
+        training_cycles=200,
+        num_episodes=20,
         # load_weights="weights.h5",
-        replay_init_size=10
+        # replay_init_size=10
         # work_dir="breakout_temp"
     )
     # run(render='human', training_cycles=5, num_episodes=0, load_weights="batched_updates_2.h5",

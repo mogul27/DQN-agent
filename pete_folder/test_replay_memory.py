@@ -142,6 +142,16 @@ class DataWithHistoryTest(unittest.TestCase):
         self.assertTrue(np.array_equal(no_state, state[1]))
         self.assertTrue(np.array_equal(no_state, state[0]))
 
+    def test_transpose_for_empty_data_items(self):
+        # create DataWithHistory using empty records
+        data = [(DataWithHistory.empty_state(), i % 4, i, DataWithHistory.empty_state(), i == 1) for i in range(4)]
+        data_with_history = DataWithHistory(data)
+
+        state = data_with_history.get_state()
+
+        transposed_states = np.transpose(np.array([state]), (0, 2, 3, 1))
+        self.assertEqual((1, 84, 84, 4), transposed_states.shape)
+
 
 
 if __name__ == '__main__':

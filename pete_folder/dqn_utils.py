@@ -167,5 +167,36 @@ class Timer:
             print(f"{name} : {elapsed:0.1f} seconds")
 
 
+class Options:
+
+    def __init__(self, values=None):
+        """ Copies names and values from supplied Dict / Options object.
+
+        :param values: dict with names and values, or an Option object.
+        """
+        if values is None:
+            self.values = {}
+        else:
+            if isinstance(values, Options):
+                values = values.values
+            self.values = {name: value for name, value in values.items()}
+
+    def default(self, name, value):
+        """ Sets the value if the name not already in options, otherwise leave the value for name as is.
+        """
+        if name not in self.values:
+            self.set(name, value)
+
+    def get(self, name, default=None):
+        """ Get value for name, return default value if the name not in options.
+        """
+        if name in self.values:
+            return self.values[name]
+        return default
+
+    def set(self, name, value):
+        """ Set the value for the option name
+        """
+        self.values[name] = value
 
 
