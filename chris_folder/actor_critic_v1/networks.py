@@ -35,9 +35,10 @@ class Actor:
         # continuous action spaces
         
         inputs = Input(shape=state_dims)
-        dense = Dense(24, activation="relu")
+        dense = Dense(240, activation="relu")
         x = dense(inputs)
-        x = Dense(12, activation="relu")(x)
+        dense2 = Dense(240, activation="relu")
+        x = dense2(x)
         # initialiser initialises output layer uniformly
         mu_initialiser = RandomUniform(minval=-1.0, maxval=1.0)
         var_initialiser = RandomUniform(minval=-1.0, maxval=1.0)
@@ -116,13 +117,14 @@ class Actor:
         # Prevent var elements from being 0 to avoid dividing by 0
         var = np.clip(var, 1e-6, None)
         term1 = -((actions - mu)**2) / (2*var)
+        #term1 = -((mu-actions)**2) / (2*var) - current
         term2 = -np.log(np.sqrt(2*np.pi*var))
         log_probs = term1+term2
-        # Changed loss to +ve
         actor_loss = log_probs*adv_function        
 
         state = np.expand_dims(state, axis=0)
         self.network.train_on_batch(state, actor_loss)
+        print(actor_loss)
 
         return None
 
@@ -150,8 +152,8 @@ class Critic:
         """
 
         model = Sequential()
-        model.add(Dense(24, input_shape=state_dims, activation="relu"))
-        model.add(Dense(12, activation="relu"))
+        model.add(Dense(48, input_shape=state_dims, activation="relu"))
+        model.add(Dense(48, activation="relu"))
         model.add(Dense(1, activation="linear"))
 
         optimiser = Adam(learning_rate=learning_rate)
