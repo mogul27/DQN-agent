@@ -9,6 +9,7 @@ import pickle
 from collections import deque
 import matplotlib.pyplot as plt
 
+from keras import backend as K
 from keras import Model
 from keras.layers import Dense, Input
 from keras.losses import Huber
@@ -95,9 +96,9 @@ class FunctionApprox:
         value_weights = self.q_hat.get_weights()
         target_weights = self.q_hat_target.get_weights()
         # TODO : consider moving towards the value weights, rather than a complete replacement.
-        sync_tau = self.options.get('sync_tau', 1.0)
+        sync_beta = self.options.get('sync_beta', 1.0)
         for i in range(len(target_weights)):
-            target_weights[i] = (1 - sync_tau) * target_weights[i] + sync_tau * value_weights[i]
+            target_weights[i] = (1 - sync_beta) * target_weights[i] + sync_beta * value_weights[i]
         self.q_hat_target.set_weights(target_weights)
 
     def build_neural_network(self):
@@ -120,6 +121,12 @@ class FunctionApprox:
             return network
         except Exception as e:
             print(f"failed to create model : {e}")
+
+    def reset_learning_rate(self, lr):
+        K.set_value(self.q_hat.optimizer.learning_rate, lr)
+
+    def get_learning_rate(self):
+        return K.get_value(self.q_hat.optimizer.learning_rate)
 
     def get_value(self, state, action):
         prediction = self.q_hat.predict_on_batch(np.expand_dims(state, axis=0))
@@ -486,6 +493,13 @@ def run(options):
     for i in range(training_cycles):
 
         timer.start("Training cycle")
+        # if i == 10:
+        #     print(f"\nreset learning rate to 0.0001")
+        #     agent.q_func.reset_learning_rate(0.0001)
+        # if i == 30:
+        #     print(f"\nreset learning rate to 0.0001")
+        #     agent.q_func.reset_learning_rate(0.00001)
+        # print(f"learning rate = {agent.q_func.get_learning_rate()}")
 
         print(f"\nTraining cycle {i+1} of {training_cycles}:")
         # print(f"Start epsilon = {agent.policy.epsilon:0.5f}"
@@ -551,20 +565,20 @@ def plot_reward_epsilon(stats, options):
     fig, ax1 = plt.subplots()
 
     color = 'tab:blue'
-    ax1.set_title(options.get('plot_title', 'DQN rewards and epsilon'))
+    ax1.set_title(options.get('plot_title', 'DQN rewards.'))
     ax1.set_xlabel('episodes')
     ax1.set_ylabel('reward', color=color)
     ax1.set_ylim(0, 500)
     ax1.plot(x, rwd, color=color)
     ax1.tick_params(axis='y', labelcolor=color)
 
-    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-    color = 'tab:green'
-    ax2.set_ylabel('epsilon', color=color)  # we already handled the x-label with ax1
-    ax2.plot(x, eps, color=color)
-    ax2.set_ylim(0, 1.0)
-    ax2.tick_params(axis='y', labelcolor=color)
+    # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    #
+    # color = 'tab:green'
+    # ax2.set_ylabel('epsilon', color=color)  # we already handled the x-label with ax1
+    # ax2.plot(x, eps, color=color)
+    # ax2.set_ylim(0, 1.0)
+    # ax2.tick_params(axis='y', labelcolor=color)
 
     fig.tight_layout()
 
@@ -573,7 +587,7 @@ def plot_reward_epsilon(stats, options):
 
 def main():
     # run(render='human')
-    options={
+    options = {
         'env_name': "CartPole-v1",
         # 'render': "human",
         'observation_shape': (4, ),
@@ -583,8 +597,8 @@ def main():
         'actions_before_replay': 1,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
-        'sync_weights_count': 1,
-        'sync_tau': 0.0001,
+        'sync_weights_count': 400,
+        'sync_beta': 1.0,
         'load_weights': False,
         'save_weights': False,
         'replay_init_size': 10000,
@@ -606,14 +620,20 @@ def main():
     # options['replay_init_size'] = replay_init_size
     # options['replay_max_size'] = replay_init_size*2
     # options['plot_title'] = f"Reward and training epsilon. replay={replay_init_size} : {2*replay_init_size}"
+    # options['episodes'] = 1
+    # options['plot_title'] = f"xxx"
+    # run(options)
 
-    # TODO run the 0.1 and 1.0
-    for tau in [0.1, 1.0]:
-        for mini_batch in [32, 64, 128, 256]:
-            options['sync_tau'] = tau
-            options['mini_batch'] = mini_batch
-            options['plot_title'] = f"Actions before mini_batch=16. sync_tau={tau}, mini_batch={mini_batch}"
-            run(options)
+
+    # options['plot_title'] = f"lr=0.001, then 0.0001 after episode 100, then 0.00001 after 300"
+    run(options)
+    # # TODO run the 0.1 and 1.0
+    # for lr in [0.00001, 0.0001, 0.001]:
+    #         # options['stats_every'] = 1
+    #         # options['episodes'] = 5
+    #         options['adam_learning_rate'] = lr
+    #         options['plot_title'] = f"adam_learning_rate={options['adam_learning_rate']}"
+    #         run(options)
 
 
 if __name__ == '__main__':
