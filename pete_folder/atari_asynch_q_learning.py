@@ -166,7 +166,7 @@ class FunctionApprox:
             network.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
             network.add(Flatten())
             network.add(Dense(512, activation='relu'))
-            network.add(Dense(4, activation=None))
+            network.add(Dense(len(self.actions), activation=None))
             network.summary()
 
             # compile the model
@@ -448,6 +448,8 @@ class AsyncQLearnerWorker(mp.Process):
                     print(f"worker failed to send weight deltas")
                     print(e)
                 state_action_buffer = []
+                # restore the weights - we'll get the update back from the controller shortly
+                self.q_func.set_value_network_weights(weights_before)
 
             if self.initialised:
                 if terminated:
@@ -670,9 +672,14 @@ class AsyncStatsCollector(mp.Process):
         last_action = -1
         repeated_action_count = 0
         action_frequency = {a: 0 for a in self.options.get('actions')}
+        life_lost = True
 
         while not terminated:
-            action = self.policy.select_action(state)
+            if life_lost:
+                # assume game starts with action 1 - Fire.
+                action = 1
+            else:
+                action = self.policy.select_action(state)
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -775,6 +782,13 @@ class AsyncQLearningController:
         self.q_func.load_weights()
         self.workers = []
         self.stats_collector = None
+        self.delta_fraction = self.options.get('delta_fraction', 1.0)
+        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
+        # location for files.
+        self.work_dir = Path(self.work_dir)
+        if not self.work_dir.exists():
+            self.work_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = self.create_controller_log()
 
     def message_all_workers(self, msg_code, content):
         msg = (msg_code, content)
@@ -801,6 +815,7 @@ class AsyncQLearningController:
     def update_value_network_weights(self, gradient_deltas):
         value_network_weights = self.q_func.get_value_network_weights()
         # print(f"Controller : value network weights before deltas {self.q_func.weights_checksum(value_network_weights)}")
+
         for (weights, deltas) in zip(value_network_weights, gradient_deltas):
             weights += deltas
 
@@ -808,6 +823,37 @@ class AsyncQLearningController:
         self.q_func.set_value_network_weights(value_network_weights)
 
         self.message_all_workers('value_network_weights', value_network_weights)
+
+    def create_controller_log(self):
+        time_stamp = time.strftime("%Y%m%d-%H%M%S")
+        log_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
+        with open(log_file, 'a') as file:
+            file.write(f"episode, total_steps, reward, pid, value_net, target_net, epsilon"
+                       f", min_q, ,max_q, min_q*, max_q*\n")
+        return log_file
+
+    def log_episode_detail(self, episode_detail, total_steps, episode):
+        if self.options.get('log_level', 2) < 2:
+            print(f"Total steps {total_steps} : Episode {episode} took {episode_detail['steps']} steps"
+                  f" : reward = {episode_detail['total_reward']} : pid = {episode_detail['worker']}"
+                  f" : value_net = {episode_detail['value_network_checksum']:0.4f}"
+                  f" : target_net = {episode_detail['target_network_checksum']:0.4f}"
+                  f" : epsilon = {episode_detail['epsilon']:0.4f}"
+                  f" : min,max q = {episode_detail['min_q_value']:0.2f},{episode_detail['max_q_value']:0.2f}"
+                  f" : min,max q* = {episode_detail['min_q_value_for_a']:0.2f},{episode_detail['max_q_value_for_a']:0.2f}")
+
+        with open(self.log_file, 'a') as file:
+            file.write(f"{episode},{total_steps}"
+                       f",{episode_detail['total_reward']}"
+                       f",{episode_detail['worker']}"
+                       f",{episode_detail['value_network_checksum']}"
+                       f",{episode_detail['target_network_checksum']}"
+                       f",{episode_detail['epsilon']}"
+                       f",{episode_detail['min_q_value']}"
+                       f",{episode_detail['max_q_value']}"
+                       f",{episode_detail['min_q_value_for_a']}"
+                       f",{episode_detail['max_q_value_for_a']}"
+                       f"\n")
 
     def train(self):
         print(f"Controller {os.getppid()}: Setting up workers to run asynch q-learning")
@@ -843,8 +889,6 @@ class AsyncQLearningController:
         total_steps = 0
         episode_count = 0
         target_sync_counter = self.options.get('target_net_sync_steps', 1)
-        best_reward = None
-        best_episode = 0
 
         while episode_count < self.options.get('episodes', 1):
 
@@ -897,18 +941,7 @@ class AsyncQLearningController:
                 # print(f"controller about to read from info queue")
                 info = info_queue.get(False)
                 episode_count += 1
-                if best_reward is None or  best_reward < info['total_reward']:
-                    best_reward = info['total_reward']
-                    best_episode = episode_count
-                print(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps"
-                      f" : reward = {info['total_reward']} : pid = {info['worker']}"
-                      f" : value_net = {info['value_network_checksum']:0.4f}"
-                      f" : target_net = {info['target_network_checksum']:0.4f}"
-                      f" : epsilon = {info['epsilon']:0.4f}"
-                      f" : min,max q = {info['min_q_value']:0.2f},{info['max_q_value']:0.2f}"
-                      f" : min,max q* = {info['min_q_value_for_a']:0.2f},{info['max_q_value_for_a']:0.2f}"
-                      f" : best_reward (episode) = {best_reward} ({best_episode})")
-
+                self.log_episode_detail(info, total_steps, episode_count)
                 if episode_count % self.options.get('stats_every') == 0:
                     self.q_func.save_weights()
                     weights = self.q_func.get_value_network_weights()
@@ -947,23 +980,29 @@ def create_and_run_agent():
     timer = Timer()
     timer.start("agent")
     agent = AsyncQLearningController(options={
-        'env_name': "ALE/Breakout-v5",
         'work_dir': 'async/breakout',
+        'env_name': "ALE/Breakout-v5",
         'actions': [0, 1, 2, 3],
+        # 'work_dir': 'async/pong',
+        # 'env_name': "ALE/Pong-v5",
+        # 'actions': [0, 1, 2, 3, 4, 5],
         'num_workers': 4,
-        'episodes': 2000,
+        'episodes': 1000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 200,
-        'sync_tau': 0.9,
+        'target_net_sync_steps': 4000,
+        'sync_tau': 1.0,
+        'delta_fraction': 1.0,
         'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
         'load_weights': False,
         'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 0.75,
-        'epsilon_min': 0.1,
+        'epsilon_min': 0.50,
         'epsilon_decay_episodes': 350,
-        'stats_every': 10
+        'stats_every': 10,  # how frequently to collect stats
+        'play_avg': 1,      # number of games to average
+        'log_level': 2,     # debug=1, info=2, warn=3, error=4
     })
     #
     # agent = AsyncQLearningController(options={
