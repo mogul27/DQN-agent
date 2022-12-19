@@ -689,7 +689,7 @@ def main():
 
     options['start_episode_num'] = 3001
     options['epsilon'] = 0.1
-    options['adam_learning_rate'] = 0.00001
+    # options['adam_learning_rate'] = 0.00001
     # options['env_name'] = "ALE/Pong-v5"
     # options['actions'] = [0, 1, 2, 3, 4, 5]
 
