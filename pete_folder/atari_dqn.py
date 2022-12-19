@@ -5,6 +5,7 @@ import numpy as np
 import random
 import os
 from pathlib import Path
+import time
 import pickle
 from collections import deque
 import matplotlib.pyplot as plt
@@ -103,6 +104,18 @@ class FunctionApprox:
         for i in range(len(target_weights)):
             target_weights[i] = (1 - sync_tau) * target_weights[i] + sync_tau * value_weights[i]
         self.q_hat_target.set_weights(target_weights)
+
+    def get_value_network_checksum(self):
+        return self.weights_checksum(self.q_hat.get_weights())
+
+    def get_target_network_checksum(self):
+        return self.weights_checksum(self.q_hat_target.get_weights())
+
+    def weights_checksum(self, weights):
+        checksum = 0.0
+        for layer_weights in weights:
+            checksum += layer_weights.sum()
+        return checksum
 
     def build_neural_network(self):
         # Crete neural network model to predict actions for states.
@@ -213,6 +226,25 @@ class AgentDqn:
         self.replay_memory = ReplayMemory(max_len=100000, history=3, file_name=replay_memory_file)
         self.max_delta = None
         self.min_delta = None
+        self.log_file = self.create_log_file()
+
+    def create_log_file(self):
+        time_stamp = time.strftime("%Y%m%d-%H%M%S")
+        log_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
+        with open(log_file, 'a') as file:
+            file.write(f"episode,episode_steps,reward,value_net,target_net,epsilon\n")
+        return log_file
+
+    def log_episode_detail(self, episode, steps, reward):
+        epsilon = self.policy.epsilon
+        print(f"    Episode {episode} : {steps} steps. Epsilon {epsilon:0.3f} : Total reward {reward}")
+
+        q_net_checksum = self.q_func.get_value_network_checksum()
+        target_net_checksum = self.q_func.get_target_network_checksum()
+
+        with open(self.log_file, 'a') as file:
+            file.write(f"{episode},{steps},{reward}"
+                       f",{q_net_checksum},{target_net_checksum},{epsilon}\n")
 
     def take_step(self, env, action, skip=3):
         previous_obs = None
@@ -390,9 +422,10 @@ class AgentDqn:
                     print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                     break
 
-            print(f"    Episode {episode} : {steps} steps. Epsilon {self.policy.epsilon:0.3f}"
-                  f" : Total reward {total_undiscounted_reward}")
             frame_count += steps
+            self.log_episode_detail(episode, steps, total_undiscounted_reward)
+
+
             agent_rewards.append(total_undiscounted_reward)
 
             self.policy.decay_epsilon()
@@ -654,8 +687,9 @@ def main():
     # options['episodes'] = 1
     # options['render'] = 'human'
 
-    options['start_episode_num'] = 1001
+    options['start_episode_num'] = 3001
     options['epsilon'] = 0.1
+    options['adam_learning_rate'] = 0.00001
     # options['env_name'] = "ALE/Pong-v5"
     # options['actions'] = [0, 1, 2, 3, 4, 5]
 
