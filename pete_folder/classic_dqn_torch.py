@@ -127,8 +127,9 @@ class FunctionApprox:
         if self.options.get('load_weights', default=False):
             weights_file = self.get_weights_file()
             if weights_file is not None and weights_file.exists():
-                self.q_hat.load_state_dict(torch.load(weights_file))
-                self.q_hat_target.load_state_dict(torch.load(weights_file))
+                state_dict = torch.load(weights_file)
+                self.set_value_network_weights(state_dict)
+                self.set_target_network_weights(state_dict)
 
     def synch_value_and_target_weights(self):
         # Copy the weights from action_value network to the target action_value network
@@ -137,7 +138,7 @@ class FunctionApprox:
         target_state_dict = self.q_hat_target.state_dict()
         for name in state_dict:
             state_dict[name] = sync_beta * state_dict[name] + (1.0 - sync_beta) * target_state_dict[name]
-        self.q_hat_target.load_state_dict(state_dict)
+        self.set_target_network_weights(state_dict)
 
     def create_loss_function(self):
         return nn.HuberLoss()
@@ -146,8 +147,23 @@ class FunctionApprox:
         adam_learning_rate = self.options.get('adam_learning_rate', 0.0001)
         return torch.optim.Adam(self.q_hat.parameters(), lr=adam_learning_rate)
 
+    # TODO : update the getting / setting weights
+    def get_value_network_weights(self):
+        # TODO : do we need to clone the weights ?
+        return self.q_hat.state_dict()
+
+    def set_value_network_weights(self, weights):
+        # TODO : do we need the copy?
+        self.q_hat.load_state_dict(weights)
+
     def get_value_network_checksum(self):
         return self.weights_checksum(self.q_hat.state_dict())
+
+    def get_target_network_weights(self):
+        return self.q_hat_target.state_dict()
+
+    def set_target_network_weights(self, weights):
+        self.q_hat_target.load_state_dict(weights)
 
     def get_target_network_checksum(self):
         return self.weights_checksum(self.q_hat_target.state_dict())
@@ -617,9 +633,9 @@ def main():
     # options['sync_weights_count'] = 1
     # options['sync_beta'] = 0.01
     # options['adam_learning_rate'] = 0.001
-    options['episodes'] = 500
+    options['episodes'] = 15
     # options['save_weights'] = True
-    # options['load_weights'] = True
+    options['load_weights'] = True
     run(options)
     # # TODO run the 0.1 and 1.0
     # for lr in [0.00001, 0.0001, 0.001]:
