@@ -23,7 +23,8 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
     # Create Environment and get environment attributes
     env = gym.make("CartPole-v1")
     state_dims = env.observation_space.shape
-    print(state_dims)
+    action_space = [i for i in range(env.action_space.n)]
+
     # Initialise actor and citic + corresponding networks
     actor = Actor()
     actor.create_network(state_dims, num_actions, actor_lr)
@@ -48,7 +49,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             # Inner loop = 1 step from here
             
             # Take action using Actor
-            action = actor.predict(prev_state)
+            action = actor.predict(prev_state, action_space)
             next_state, reward, terminal, truncated, info = env.step(action)
 
             # Value current and next state with critic (v(St))
@@ -72,7 +73,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             
             # Actor updates using the Q value adjusted for advantage to make it A2C
             # Negative lo loss of sample distribution calclated in train function
-            actor.train(prev_state, adv_function_approx, action)
+            actor.train(prev_state, adv_function_approx, action, num_actions)
 
             # Increment steps and set prev_state = next_state
             prev_state = copy.deepcopy(next_state)
