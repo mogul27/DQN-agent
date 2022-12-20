@@ -17,8 +17,6 @@ import torch.nn as nn
 import torch.nn.functional
 import torch.optim
 
-from copy import deepcopy
-
 import numpy as np
 
 import traceback
@@ -201,14 +199,11 @@ class FunctionApprox:
         adam_learning_rate = self.options.get('adam_learning_rate', 0.0001)
         return torch.optim.Adam(self.q_hat.parameters(), lr=adam_learning_rate)
 
-    # TODO : update the getting / setting weights
     def get_value_network_weights(self):
         return self.q_hat.state_dict()
 
     def set_value_network_weights(self, weights):
         self.q_hat.load_state_dict(weights)
-        # Need to update the optimizer when we change the weights?
-        self.optimizer = self.create_optimizer()
 
     def get_value_network_checksum(self):
         return self.weights_checksum(self.q_hat.state_dict())
@@ -331,8 +326,7 @@ class AsyncQLearnerWorker(mp.Process):
                 # Nothing to process, so just carry on
                 read_messages = False
             except Exception as e:
-                print(f"read messages failed")
-                print(e)
+                self.log.error(f"read messages failed", e)
 
     def process_controller_messages(self, timeout=0.0):
         """ see if there are any messages from the controller, and process accordingly
@@ -340,28 +334,6 @@ class AsyncQLearnerWorker(mp.Process):
         self.get_latest_tasks(timeout)
         if self.tasks['stop']:
             return
-
-        # if self.tasks['value_network_weights'] is not None:
-        #     self.log.trace(f"update value network weights")
-        #     shared_weights = self.global_value_network.state_dict()
-        #     self.q_func.set_value_network_weights(shared_weights)
-        #     self.tasks['value_network_weights'] = None
-        #     self.value_network_updated = True
-        #
-        # if self.tasks['target_network_weights'] is not None:
-        #     self.log.trace(f"update target network weights")
-        #     shared_weights = self.global_target_network.state_dict()
-        #     self.q_func.set_target_network_weights(shared_weights)
-        #     self.tasks['target_network_weights'] = None
-
-        # if self.tasks['reset_network_weights'] is not None:
-        #     self.log.trace(f"reset_network_weights network weights")
-        #     network_weights = self.tasks['reset_network_weights']
-        #     self.q_func.set_value_network_weights(network_weights)
-        #     self.q_func.set_target_network_weights(network_weights)
-        #
-        #     self.initialised = True
-        #     self.tasks['reset_network_weights'] = None
 
     def get_global_value_network_weights(self):
         """ Controller couldn't keep up with the updates being sent, so add a wait for the network update
@@ -410,19 +382,11 @@ class AsyncQLearnerWorker(mp.Process):
 
         # keep track of requests from the controller by recording them in the tasks dict.
         self.tasks = {
-            # 'value_network_weights': None,
-            # 'target_network_weights': None,
-            # 'reset_network_weights': None,
             'stop': None
         }
 
         self.q_func = FunctionApprox(self.options, self.global_value_network, self.global_target_network)
-        # shared_weights = self.global_value_network.state_dict()
-        # self.q_func.set_value_network_weights(shared_weights)
-        # shared_weights = self.global_target_network.state_dict()
-        # self.q_func.set_target_network_weights(shared_weights)
 
-        # TODO : add epsilon to options
         self.policy = EGreedyPolicy(self.q_func, self.options)
         print(f"Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
@@ -477,7 +441,6 @@ class AsyncQLearnerWorker(mp.Process):
 
                 total_undiscounted_reward += reward
                 if terminated:
-                    # TODO : add a calculate and send of the grads at the end of an episode.
                     loss = self.async_grad_update(experiences)
                     losses.append(loss)
                     try:
@@ -493,10 +456,7 @@ class AsyncQLearnerWorker(mp.Process):
                             'avg_loss': sum(losses) / len(losses)
                         })
                     except Exception as e:
-                        print(f"worker failed to send weight deltas")
-                        print(e)
-                    # print(f"Finished episode after {steps} steps. "
-                    #       f"Total reward {total_undiscounted_reward}")
+                        self.log.error(f"worker failed to send to info_queue", e)
                     steps = 0
                     # apply epsilon decay after each episode
                     self.policy.decay_epsilon()
@@ -549,8 +509,7 @@ class AsyncStatsCollector(mp.Process):
                 # Nothing to process, so just carry on
                 read_messages = False
             except Exception as e:
-                print(f"read messages failed")
-                print(e)
+                self.log.error(f"read messages failed", e)
 
     def process_controller_messages(self, env):
         """ see if there are any messages from the controller, and process accordingly
@@ -563,10 +522,9 @@ class AsyncStatsCollector(mp.Process):
             # print(f"update the value network weights")
             contents = self.tasks['play']
             self.tasks['play'] = None
-            # print(f"stats_collector: update weights play  {self.q_func.weights_checksum(contents['weights'])}")
+            self.log.trace(f"stats_collector: update weights for play "
+                           f"{self.q_func.weights_checksum(contents['weights'])}")
             self.q_func.set_value_network_weights(contents['weights'])
-            updated_weights = self.q_func.get_value_network_weights()
-            # print(f"stats_collector: updated weights play  {self.q_func.weights_checksum(updated_weights)}")
 
             episode = contents['episode_count']
             play_rewards = []
@@ -722,48 +680,25 @@ class AsyncQLearningController:
         msg = (msg_code, content)
         for worker, worker_queue in self.workers:
             # send message to each worker
-            # print(f"sending : {msg_code}")
+            self.log.trace(f"sending : {msg_code}")
             try:
                 worker_queue.put(msg)
             except Exception as e:
-                print(f"Queue put failed in controller")
-                print(e)
-            # print(f"sent : {msg_code}")
+                self.log.error(f"Queue put failed in controller", e)
+            self.log.trace(f"sent : {msg_code}")
 
     def message_stats_collector(self, msg_code, content):
         msg = (msg_code, content)
         stats_queue, worker = self.stats_collector
         try:
-            # print(f"Send {msg_code} message to stats collector")
+            self.log.trace(f"Send {msg_code} message to stats collector")
             stats_queue.put(msg)
         except Exception as e:
-            print(f"stats_queue put failed in controller")
-            print(e)
-
-    # def broadcast_value_network_weights(self):
-    #     self.log.trace(f"broadcast network weights")
-    #     # value_network_weights = deepcopy(self.q_func.get_value_network_weights())
-    #     # self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
-    #     self.message_all_workers('value_network_weights', 'updated')
-    #
-    # def update_value_network_weights(self, weight_deltas):
-    #     self.log.trace(f"\nchecksum at start of update {self.q_func.get_value_network_checksum()}")
-    #     value_network_weights = self.q_func.get_value_network_weights().copy()
-    #     # print(f"value network weights before deltas {self.q_func.weights_checksum(value_network_weights)}")
-    #     for name in value_network_weights:
-    #         value_network_weights[name] += weight_deltas[name]
-    #
-    #     # print(f"update value network weights {self.q_func.weights_checksum(value_network_weights)}")
-    #     self.log.trace(f"checksum value before call to set {self.q_func.get_value_network_checksum()}")
-    #     self.q_func.set_value_network_weights(value_network_weights)
-    #     value_network_weights = deepcopy(self.q_func.get_value_network_weights())
-    #     self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
-    #     self.message_all_workers('value_network_weights', value_network_weights)
+            self.log.error(f"stats_queue put failed in controller", e)
 
     def train(self):
         print(f"{os.getppid()}: Setting up workers to run asynch q-learning")
 
-        # TODO : does this need a max size setting?
         grad_update_queue = mp.Queue()
         info_queue = mp.Queue()
 
@@ -776,11 +711,6 @@ class AsyncQLearningController:
             worker.daemon = True    # helps tidy up child processes if parent dies.
             worker.start()
             self.workers.append((worker, worker_queue))
-
-        # Send the workers the starting weights
-        # starting_weights = deepcopy(self.q_func.get_value_network_weights())
-        # print(f"init weights for workers {self.q_func.weights_checksum(starting_weights)}")
-        # self.message_all_workers('reset_network_weights', starting_weights)
 
         # set up stats_gatherer
         stats_queue = mp.Queue()
@@ -817,34 +747,18 @@ class AsyncQLearningController:
                                f"error count={grads_update_errors}", e)
 
             if len(grad_update_messages) > 0:
-                accum_grads = None
                 self.log.trace(f"accumulate steps from {len(grad_update_messages)} messages")
                 for steps in grad_update_messages:
                     total_steps += steps
                     target_sync_counter -= steps
-                #     # get changes
-                #     if accum_grads is None:
-                #         accum_grads = parameter_grads
-                #     else:
-                #         accum_grads += parameter_grads
-                #
-                # self.log.trace(f"apply grads to network")
-                # self.q_func.apply_grads(accum_grads)
-                #
-                # # Let workers know of the changes.
-                # self.log.trace(f"broadcast updated network weights")
-                # self.broadcast_value_network_weights()
 
             if target_sync_counter <= 0:
                 # synch the target weights with the value weights, then let the workers know.
                 self.q_func.synch_value_and_target_weights()
-                # network_weights = self.q_func.get_target_network_weights()
-                # print(f"target network synch {self.q_func.weights_checksum(network_weights)}")
-                # self.message_all_workers('target_network_weights', 'updated')
                 target_sync_counter = self.options.get('target_net_sync_steps', 1)
 
             try:
-                # print(f"about to read from info queue")
+                self.log.trace(f"about to read from info queue")
                 info = info_queue.get(False)
                 episode_count += 1
                 if best_reward is None or  best_reward < info['total_reward']:
@@ -860,7 +774,7 @@ class AsyncQLearningController:
 
                 if episode_count % self.options.get('stats_every') == 0:
                     self.q_func.save_weights()
-                    weights = self.q_func.get_value_network_weights()
+                    weights = self.q_func.get_value_network_weights().copy()
                     self.message_stats_collector('play', {'weights': weights, 'episode_count': episode_count})
 
             except Empty:
@@ -868,8 +782,7 @@ class AsyncQLearningController:
                 pass
 
             except Exception as e:
-                print(f"Failed to read info_queue")
-                print(e)
+                self.log.error(f"Failed to read info_queue", e)
 
         # close down the workers
         print(f"All done, {total_steps} steps processed - close down the workers")
@@ -888,8 +801,7 @@ class AsyncQLearningController:
             stats_worker.terminate()
             stats_worker.join(5)
         except Exception as e:
-            print("Failed to close the workers cleanly")
-            print(e)
+            self.log.error("Failed to close the workers cleanly", e)
 
 def register_gym_mods():
     gym.envs.registration.register(
@@ -938,7 +850,7 @@ if __name__ == '__main__':
         'sync_tau': 1.0,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
-        'load_weights': False,
+        'load_weights': True,
         'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
@@ -958,6 +870,6 @@ if __name__ == '__main__':
     #         options['adam_learning_rate'] = lr
     #         create_and_run_agent(options)
 
-    options['plot_filename'] = f'async_rewards_w_8_eps_decay_200.png'
-    options['plot_title'] = f"Asynch Q-Learning 8 workers, eps_decay=200"
+    options['plot_filename'] = f'async_rewards_w_2_eps_decay_900.png'
+    options['plot_title'] = f"Asynch Q-Learning 2 workers, eps_decay=900"
     create_and_run_agent(options)
