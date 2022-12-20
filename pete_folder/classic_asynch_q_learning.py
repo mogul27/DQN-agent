@@ -310,6 +310,7 @@ class AsyncQLearnerWorker(mp.Process):
         self.log = None
         self.value_network_updated = False
         self.grads_sent = 0
+        self.worker_throttle = self.options.get('worker_throttle')
 
     def get_latest_tasks(self, timeout=0.0):
         """ Get the latest tasks from the controller.
@@ -439,6 +440,8 @@ class AsyncQLearnerWorker(mp.Process):
         losses = []
 
         while True:
+            if self.worker_throttle is not None:
+                time.sleep(self.worker_throttle)
 
             self.process_controller_messages()
 
@@ -928,7 +931,7 @@ if __name__ == '__main__':
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'num_workers': 4,
+        'num_workers': 2,
         'episodes': 2000,
         'async_update_freq': 5,
         'target_net_sync_steps': 1000,
@@ -940,11 +943,12 @@ if __name__ == '__main__':
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
         'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 400,
+        'epsilon_decay_episodes': 900,
         'stats_every': 20,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
-                    }
+        'worker_throttle': 0.0001,       # 0.001 looked ok for 4 workers, and 0.005 or 0.01 for 8
+    }
 
     # for lr in [0.01, 0.001, 0.0001]:
     #     for num_workers in [1, 2, 4]:
@@ -954,6 +958,6 @@ if __name__ == '__main__':
     #         options['adam_learning_rate'] = lr
     #         create_and_run_agent(options)
 
-    options['plot_filename'] = f'async_rewards_w_4_eps_decay_400.png'
-    options['plot_title'] = f"Asynch Q-Learning 4 workers, eps_decay=400"
+    options['plot_filename'] = f'async_rewards_w_8_eps_decay_200.png'
+    options['plot_title'] = f"Asynch Q-Learning 8 workers, eps_decay=200"
     create_and_run_agent(options)
