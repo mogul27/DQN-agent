@@ -37,12 +37,13 @@ class EGreedyPolicy:
         self.q_func = q_func
         self.epsilon = self.options.get('epsilon')
         self.possible_actions = self.q_func.actions
-        if self.options.get('epsilon_decay_episodes') is None:
+        decay_episodes = self.options.get('epsilon_decay_episodes', 0)
+        if decay_episodes == 0:
             self.epsilon_min = self.epsilon
             self.epsilon_decay = 0
         else:
             self.epsilon_min = self.options.get('epsilon_min', 0)
-            self.epsilon_decay = (self.epsilon - self.epsilon_min) / self.options.get('epsilon_decay_episodes')
+            self.epsilon_decay = (self.epsilon - self.epsilon_min) / decay_episodes
 
     def select_action(self, state):
         """ The EGreedy policy selects the best action the majority of the time. However, a random action is chosen
@@ -64,7 +65,7 @@ class EGreedyPolicy:
         return random.choice(self.possible_actions)
 
     def decay_epsilon(self):
-        # decay epsilon for next time
+        # decay epsilon for next time - needs to be called at the end of an episode.
         if self.epsilon > self.epsilon_min:
             self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
 
@@ -102,6 +103,7 @@ class FunctionApprox:
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
         self.discount_factor = self.options.get('discount_factor', 0.99)
+
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
         if self.work_dir is not None:
             # location for files.
@@ -131,8 +133,11 @@ class FunctionApprox:
     def synch_value_and_target_weights(self):
         # Copy the weights from action_value network to the target action_value network
         sync_beta = self.options.get('sync_beta', 1.0)
-        for target_param, param in zip(self.q_hat_target.parameters(), self.q_hat.parameters()):
-            target_param.data.copy_(sync_beta * param.data + (1.0 - sync_beta) * target_param.data)
+        state_dict = self.q_hat.state_dict().copy()
+        target_state_dict = self.q_hat_target.state_dict()
+        for name in state_dict:
+            state_dict[name] = sync_beta * state_dict[name] + (1.0 - sync_beta) * target_state_dict[name]
+        self.q_hat_target.load_state_dict(state_dict)
 
     def create_loss_function(self):
         return nn.HuberLoss()
@@ -140,6 +145,18 @@ class FunctionApprox:
     def create_optimizer(self):
         adam_learning_rate = self.options.get('adam_learning_rate', 0.0001)
         return torch.optim.Adam(self.q_hat.parameters(), lr=adam_learning_rate)
+
+    def get_value_network_checksum(self):
+        return self.weights_checksum(self.q_hat.state_dict())
+
+    def get_target_network_checksum(self):
+        return self.weights_checksum(self.q_hat_target.state_dict())
+
+    def weights_checksum(self, state_dict):
+        checksum = 0.0
+        for name, layer_weights_or_bias in state_dict.items():
+            checksum += layer_weights_or_bias.sum()
+        return checksum
 
     def build_neural_network(self):
         # Crete neural network model to predict actions for states.
@@ -162,20 +179,9 @@ class FunctionApprox:
     # def get_learning_rate(self):
     #     return K.get_value(self.q_hat.optimizer.learning_rate)
 
-    def get_value(self, state, action):
-        prediction = self.q_hat(np.expand_dims(state, axis=0))
-        return prediction[0][action]
 
     def get_all_action_values(self, states):
         return self.q_hat(torch.Tensor(states))
-
-    def get_target_value(self, state, action):
-        prediction = self.q_hat_target(np.expand_dims(state, axis=0))
-        return prediction[0][action]
-
-    def get_max_target_value(self, state):
-        prediction = self.q_hat_target(np.expand_dims(state, axis=0))
-        return max(prediction[0])
 
     def get_max_target_values(self, states):
         predictions = self.q_hat_target(torch.Tensor(states))
@@ -413,8 +419,6 @@ class AgentDqn:
 
         return agent_rewards, frame_count
 
-
-
     def replay_steps(self):
         """ Select items from the replay_memory and use them to update the q_func, value function approximation.
 
@@ -612,10 +616,10 @@ def main():
     # options['plot_title'] = f"lr=0.001, then 0.0001 after episode 100, then 0.00001 after 300"
     # options['sync_weights_count'] = 1
     # options['sync_beta'] = 0.01
-    options['adam_learning_rate'] = 0.001
-    options['episodes'] = 40
-    options['save_weights'] = True
-    options['load_weights'] = True
+    # options['adam_learning_rate'] = 0.001
+    options['episodes'] = 500
+    # options['save_weights'] = True
+    # options['load_weights'] = True
     run(options)
     # # TODO run the 0.1 and 1.0
     # for lr in [0.00001, 0.0001, 0.001]:
