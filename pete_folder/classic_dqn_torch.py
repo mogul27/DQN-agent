@@ -28,7 +28,7 @@ class EGreedyPolicy:
         :param options: can contain:
             'epsilon': small epsilon for the e-greedy policy. This is the probability that we'll
                        randomly select an action, rather than picking the best.
-            'epsilon_decay_span': the number of calls over which to decay epsilon
+            'epsilon_decay_episodes': the number of episodes over which to decay epsilon
             'epsilon_min': the min value epsilon can be after decay
         """
         self.options = Options(options)
@@ -41,10 +41,7 @@ class EGreedyPolicy:
             self.epsilon_min = self.epsilon
             self.epsilon_decay = 0
         else:
-            if self.options.get('epsilon_min') is None:
-                self.epsilon_min = 0
-            else:
-                self.epsilon_min = self.options.get('epsilon_min')
+            self.epsilon_min = self.options.get('epsilon_min', 0)
             self.epsilon_decay = (self.epsilon - self.epsilon_min) / self.options.get('epsilon_decay_episodes')
 
     def select_action(self, state):
@@ -101,19 +98,35 @@ class FunctionApprox:
         self.q_hat_target = self.build_neural_network()
         # set target weights to match q-network
         self.q_hat_target.load_state_dict(self.q_hat.state_dict())
-        self.synch_value_and_target_weights()
         self.batch = []
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
         self.discount_factor = self.options.get('discount_factor', 0.99)
+        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
+        if self.work_dir is not None:
+            # location for files.
+            self.work_dir = Path(self.work_dir)
+            if not self.work_dir.exists():
+                self.work_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_weights(self, file_name):
-        torch.save(self.q_hat.state_dict(), file_name)
+    def get_weights_file(self):
+        if self.work_dir is not None:
+            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.pth")
+            return self.work_dir / weights_file_name
+        return None
 
-    def load_weights(self, file_name):
-        if Path(file_name).exists():
-            self.q_hat.load_state_dict(torch.load(file_name))
-            self.q_hat_target.load_state_dict(torch.load(file_name))
+    def save_weights(self):
+        if self.options.get('save_weights', default=False):
+            weights_file = self.get_weights_file()
+            if weights_file is not None:
+                torch.save(self.q_hat.state_dict(), weights_file)
+
+    def load_weights(self):
+        if self.options.get('load_weights', default=False):
+            weights_file = self.get_weights_file()
+            if weights_file is not None and weights_file.exists():
+                self.q_hat.load_state_dict(torch.load(weights_file))
+                self.q_hat_target.load_state_dict(torch.load(weights_file))
 
     def synch_value_and_target_weights(self):
         # Copy the weights from action_value network to the target action_value network
@@ -210,8 +223,7 @@ class AgentDqn:
     def __init__(self, options):
         """ Set up the FunctionApprox and policy so that training runs keep using the same.
 
-        :param load_weights:
-        :param exploratory_action_probability:
+        :param options: An Options object or Dict containing all the options.
         """
         self.options = Options(options)
 
@@ -233,14 +245,8 @@ class AgentDqn:
 
         self.num_lives = 0
 
-        possible_actions = [0, 1, 2]
-
         self.q_func = FunctionApprox(options)
-        if self.options.get('load_weights', False) and self.work_dir is not None:
-            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.pth")
-            weights_file_name = Path(weights_file_name).name
-            weights_file = os.fspath(self.work_dir / weights_file_name)
-            self.q_func.load_weights(weights_file)
+        self.q_func.load_weights()
 
         self.policy = EGreedyPolicy(self.q_func, options)
         self.play_policy = EGreedyPolicy(self.q_func, {'epsilon': self.options.get('stats_epsilon')})
@@ -399,12 +405,7 @@ class AgentDqn:
 
             self.policy.decay_epsilon()
 
-        # save the weights?
-        if self.options.get('save_weights', False) and self.work_dir is not None:
-            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.pth")
-            weights_file_name = Path(weights_file_name).name
-            weights_file = os.fspath(self.work_dir / weights_file_name)
-            self.q_func.save_weights(weights_file)
+        self.q_func.save_weights()
 
         # TODO : should we save the replay_memory here?
         #        Might be useful if we're restarting training
@@ -611,8 +612,10 @@ def main():
     # options['plot_title'] = f"lr=0.001, then 0.0001 after episode 100, then 0.00001 after 300"
     # options['sync_weights_count'] = 1
     # options['sync_beta'] = 0.01
-    options['adam_learning_rate'] = 0.00001
-    options['episodes'] = 500
+    options['adam_learning_rate'] = 0.001
+    options['episodes'] = 40
+    options['save_weights'] = True
+    options['load_weights'] = True
     run(options)
     # # TODO run the 0.1 and 1.0
     # for lr in [0.00001, 0.0001, 0.001]:
