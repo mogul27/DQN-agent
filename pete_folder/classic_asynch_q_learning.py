@@ -137,14 +137,20 @@ class QNetwork(nn.Module):
 
 class FunctionApprox:
 
-    def __init__(self, options):
+    def __init__(self, options, q_hat=None, q_hat_target=None):
         self.options = Options(options)
 
         self.actions = self.options.get('actions')
-        self.q_hat = self.build_neural_network()
-        self.q_hat_target = self.build_neural_network()
-        # set target weights to match q-network
-        self.q_hat_target.load_state_dict(self.q_hat.state_dict())
+        if q_hat is None:
+            self.q_hat = self.build_neural_network()
+        else:
+            self.q_hat = q_hat
+        if q_hat_target is None:
+            self.q_hat_target = self.build_neural_network()
+            # set target weights to match q-network
+            self.q_hat_target.load_state_dict(self.q_hat.state_dict())
+        else:
+            self.q_hat_target = q_hat_target
         self.batch = []
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
@@ -270,42 +276,28 @@ class FunctionApprox:
         # actions contains a list with the action to be updated for each state (row in the new_action_values tensor)
         new_action_values[torch.arange(new_action_values.size(0)), actions] = y
 
-        # Compute the loss and gradients
-        loss = self.loss_and_grads(predicted_action_values, new_action_values)
-        loss.backward()
-
-        # Adjust learning weights - not doing this in the worker, simply get the gradients
-        # self.optimizer.step()
-        return loss.item()
-
-    def loss_and_grads(self, predicted_action_values, new_action_values):
         # Zero the gradients for every batch!
         self.optimizer.zero_grad()
 
         # Compute the loss and its gradients
         loss = self.loss_fn(predicted_action_values, new_action_values)
+        loss.backward()
 
-        # Adjust learning weights - not doing this in the worker, simply get the gradients
-        # self.optimizer.step()
-        return loss
-
-    def apply_grads(self, parameter_grads):
-        # self.optimizer.zero_grad()
-        # loss.backward()
-        for worker_param_grad, global_param in zip(parameter_grads, self.q_hat.parameters()):
-            global_param._grad = worker_param_grad
-        self.log.trace(f"value network before applying grad : checksum = {self.get_value_network_checksum()}")
+        # Adjust learning weights
         self.optimizer.step()
-        self.log.trace(f"value network after applying grad : checksum = {self.get_value_network_checksum()}")
+        return loss.item()
 
 
 class AsyncQLearnerWorker(mp.Process):
 
-    def __init__(self, messages, network_gradient_queue, info_queue, options=None):
+    def __init__(self, global_value_network, global_target_network, messages, grad_update_queue, info_queue,
+                 options=None):
         super().__init__()
+        self.global_value_network = global_value_network
+        self.global_target_network = global_target_network
         # messages is a mp.Queue used to receive messages from the controller
         self.messages = messages
-        self.network_gradient_queue = network_gradient_queue
+        self.grad_update_queue = grad_update_queue
         self.info_queue = info_queue
         self.options = Options(options)
 
@@ -348,26 +340,27 @@ class AsyncQLearnerWorker(mp.Process):
         if self.tasks['stop']:
             return
 
-        if self.tasks['value_network_weights'] is not None:
-            self.log.trace(f"update value network weights")
-            network_weights = self.tasks['value_network_weights']
-            self.q_func.set_value_network_weights(network_weights)
-            self.tasks['value_network_weights'] = None
-            self.value_network_updated = True
+        # if self.tasks['value_network_weights'] is not None:
+        #     self.log.trace(f"update value network weights")
+        #     shared_weights = self.global_value_network.state_dict()
+        #     self.q_func.set_value_network_weights(shared_weights)
+        #     self.tasks['value_network_weights'] = None
+        #     self.value_network_updated = True
+        #
+        # if self.tasks['target_network_weights'] is not None:
+        #     self.log.trace(f"update target network weights")
+        #     shared_weights = self.global_target_network.state_dict()
+        #     self.q_func.set_target_network_weights(shared_weights)
+        #     self.tasks['target_network_weights'] = None
 
-        if self.tasks['target_network_weights'] is not None:
-            self.log.trace(f"update target network weights")
-            self.q_func.set_target_network_weights(self.tasks['target_network_weights'])
-            self.tasks['target_network_weights'] = None
-
-        if self.tasks['reset_network_weights'] is not None:
-            self.log.trace(f"reset_network_weights network weights")
-            network_weights = self.tasks['reset_network_weights']
-            self.q_func.set_value_network_weights(network_weights)
-            self.q_func.set_target_network_weights(network_weights)
-
-            self.initialised = True
-            self.tasks['reset_network_weights'] = None
+        # if self.tasks['reset_network_weights'] is not None:
+        #     self.log.trace(f"reset_network_weights network weights")
+        #     network_weights = self.tasks['reset_network_weights']
+        #     self.q_func.set_value_network_weights(network_weights)
+        #     self.q_func.set_target_network_weights(network_weights)
+        #
+        #     self.initialised = True
+        #     self.tasks['reset_network_weights'] = None
 
     def get_global_value_network_weights(self):
         """ Controller couldn't keep up with the updates being sent, so add a wait for the network update
@@ -376,10 +369,10 @@ class AsyncQLearnerWorker(mp.Process):
         self.log.trace(f"Get weights from the global value network.")
         self.value_network_updated = False
         while not self.value_network_updated:
-            self.process_controller_messages(timeout=0.001)
+            self.process_controller_messages(timeout=0.01)
         self.log.trace(f"Global network weights updated.")
 
-    def process_experiences(self, experiences):
+    def async_grad_update(self, experiences):
         """ Process the batch of experiences, calling q_func to apply them.
 
         :param experiences: List of tuples with state, action, reward, next_state, terminated
@@ -397,26 +390,13 @@ class AsyncQLearnerWorker(mp.Process):
             next_states.append(ns)
             terminal.append(t)
 
-        return self.q_func.process_batch(states, actions, rewards, next_states, terminal)
-
-    def async_grad_update(self, experiences):
-        # We've processed enough steps to do an update.
-        loss = self.process_experiences(experiences)
-
-        # get all the parameters with their gradients
-        parameter_grads = []
-        for param in self.q_func.q_hat.parameters():
-            parameter_grads.append(param.grad.clone())
+        loss = self.q_func.process_batch(states, actions, rewards, next_states, terminal)
 
         try:
-            self.log.trace(f"Sending gradients to controller. steps {len(experiences)}")
-            self.network_gradient_queue.put((len(experiences), parameter_grads))
-            self.grads_sent += 1
-            self.log.trace(f"gradients sent. Total sent since start : {self.grads_sent}")
-
-            self.get_global_value_network_weights()
+            self.log.trace(f"Sending number of steps to controller {len(experiences)}")
+            self.grad_update_queue.put(len(experiences))
         except Exception as e:
-            self.log.error(f"failed to send gradients", e)
+            self.log.error(f"failed to send steps to grad_update_queue", e)
 
         return loss
 
@@ -429,20 +409,22 @@ class AsyncQLearnerWorker(mp.Process):
 
         # keep track of requests from the controller by recording them in the tasks dict.
         self.tasks = {
-            'value_network_weights': None,
-            'target_network_weights': None,
-            'reset_network_weights': None,
+            # 'value_network_weights': None,
+            # 'target_network_weights': None,
+            # 'reset_network_weights': None,
             'stop': None
         }
 
-        self.q_func = FunctionApprox(self.options)
+        self.q_func = FunctionApprox(self.options, self.global_value_network, self.global_target_network)
+        # shared_weights = self.global_value_network.state_dict()
+        # self.q_func.set_value_network_weights(shared_weights)
+        # shared_weights = self.global_target_network.state_dict()
+        # self.q_func.set_target_network_weights(shared_weights)
 
         # TODO : add epsilon to options
         self.policy = EGreedyPolicy(self.q_func, self.options)
         print(f"Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
-
-        self.initialised = False
 
         steps = 0
         steps_since_async_update = 0
@@ -469,55 +451,54 @@ class AsyncQLearnerWorker(mp.Process):
                 losses.append(loss)
                 experiences = []
 
-            if self.initialised:
+            if terminated:
+                state, info = env.reset()
+
+                action = self.policy.select_action(state)
+
+                total_undiscounted_reward = 0
+                terminated = False
+
+            else:
+                # Take action A, observe R, S'
+                next_state, reward, terminated, truncated, info = env.step(action)
+                terminated = terminated or truncated    # treat truncated as terminated
+
+                # Choose A' from S' using policy derived from q_func
+                next_action = self.policy.select_action(next_state)
+
+                experiences.append((state, action, reward, next_state, terminated))
+
+                steps += 1
+                steps_since_async_update += 1
+
+                total_undiscounted_reward += reward
                 if terminated:
-                    state, info = env.reset()
+                    # TODO : add a calculate and send of the grads at the end of an episode.
+                    loss = self.async_grad_update(experiences)
+                    losses.append(loss)
+                    try:
+                        # print(f"send info message from worker")
+                        # print(f"worker about to send weights deltas to controller")
+                        self.info_queue.put({
+                            'total_reward': total_undiscounted_reward,
+                            'steps': steps,
+                            'worker': self.pid,
+                            'epsilon': self.policy.epsilon,
+                            'value_network_checksum': self.q_func.get_value_network_checksum(),
+                            'target_network_checksum': self.q_func.get_target_network_checksum(),
+                            'avg_loss': sum(losses) / len(losses)
+                        })
+                    except Exception as e:
+                        print(f"worker failed to send weight deltas")
+                        print(e)
+                    # print(f"Finished episode after {steps} steps. "
+                    #       f"Total reward {total_undiscounted_reward}")
+                    steps = 0
+                    # apply epsilon decay after each episode
+                    self.policy.decay_epsilon()
 
-                    action = self.policy.select_action(state)
-
-                    total_undiscounted_reward = 0
-                    terminated = False
-
-                else:
-                    # Take action A, observe R, S'
-                    next_state, reward, terminated, truncated, info = env.step(action)
-                    terminated = terminated or truncated    # treat truncated as terminated
-
-                    # Choose A' from S' using policy derived from q_func
-                    next_action = self.policy.select_action(next_state)
-
-                    experiences.append((state, action, reward, next_state, terminated))
-
-                    steps += 1
-                    steps_since_async_update += 1
-
-                    total_undiscounted_reward += reward
-                    if terminated:
-                        # TODO : add a calculate and send of the grads at the end of an episode.
-                        loss = self.async_grad_update(experiences)
-                        losses.append(loss)
-                        try:
-                            # print(f"send info message from worker")
-                            # print(f"worker about to send weights deltas to controller")
-                            self.info_queue.put({
-                                'total_reward': total_undiscounted_reward,
-                                'steps': steps,
-                                'worker': self.pid,
-                                'epsilon': self.policy.epsilon,
-                                'value_network_checksum': self.q_func.get_value_network_checksum(),
-                                'target_network_checksum': self.q_func.get_target_network_checksum(),
-                                'avg_loss': sum(losses) / len(losses)
-                            })
-                        except Exception as e:
-                            print(f"worker failed to send weight deltas")
-                            print(e)
-                        # print(f"Finished episode after {steps} steps. "
-                        #       f"Total reward {total_undiscounted_reward}")
-                        steps = 0
-                        # apply epsilon decay after each episode
-                        self.policy.decay_epsilon()
-
-                    state, action = next_state, next_action
+                state, action = next_state, next_action
 
 
 class AsyncStatsCollector(mp.Process):
@@ -603,7 +584,7 @@ class AsyncStatsCollector(mp.Process):
         fig, ax = plt.subplots()
 
         color = 'tab:blue'
-        ax.set_title(self.options.get('plot_title', 'Asynch DQN rewards'))
+        ax.set_title(self.options.get('plot_title', 'Asynch Q-Learning'))
         ax.set_xlabel('episodes')
         ax.set_ylabel('reward', color=color)
         # ax1.set_ylim(0, 50)
@@ -612,8 +593,8 @@ class AsyncStatsCollector(mp.Process):
 
         fig.tight_layout()
 
-        plt.savefig(self.work_dir / 'async_rewards.pdf')
-        plt.savefig(self.work_dir / 'async_rewards.png')
+        plot_filename = self.options.get('plot_filename', 'async_rewards.png')
+        plt.savefig(self.work_dir / plot_filename)
         plt.close('all')    # matplotlib holds onto all the figures if we don't close them.
 
     def play(self, env, episode_count):
@@ -725,6 +706,10 @@ class AsyncQLearningController:
     def __init__(self, options=None):
         self.options = Options(options)
         self.q_func = FunctionApprox(self.options)
+        self.global_value_network = self.q_func.q_hat
+        self.global_target_network = self.q_func.q_hat
+        self.global_value_network.share_memory()
+        self.global_target_network.share_memory()
         self.q_func.load_weights()
         self.workers = []
         self.stats_collector = None
@@ -752,49 +737,47 @@ class AsyncQLearningController:
             print(f"stats_queue put failed in controller")
             print(e)
 
-    def broadcast_value_network_weights(self):
-        self.log.trace(f"broadcast network weights")
-        value_network_weights = deepcopy(self.q_func.get_value_network_weights())
-        self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
-        self.message_all_workers('value_network_weights', value_network_weights)
-
-    def update_value_network_weights(self, weight_deltas):
-        self.log.trace(f"\nchecksum at start of update {self.q_func.get_value_network_checksum()}")
-        value_network_weights = self.q_func.get_value_network_weights().copy()
-        # print(f"value network weights before deltas {self.q_func.weights_checksum(value_network_weights)}")
-        for name in value_network_weights:
-            value_network_weights[name] += weight_deltas[name]
-
-        # print(f"update value network weights {self.q_func.weights_checksum(value_network_weights)}")
-        self.log.trace(f"checksum value before call to set {self.q_func.get_value_network_checksum()}")
-        self.q_func.set_value_network_weights(value_network_weights)
-        value_network_weights = deepcopy(self.q_func.get_value_network_weights())
-        self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
-        self.message_all_workers('value_network_weights', value_network_weights)
+    # def broadcast_value_network_weights(self):
+    #     self.log.trace(f"broadcast network weights")
+    #     # value_network_weights = deepcopy(self.q_func.get_value_network_weights())
+    #     # self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
+    #     self.message_all_workers('value_network_weights', 'updated')
+    #
+    # def update_value_network_weights(self, weight_deltas):
+    #     self.log.trace(f"\nchecksum at start of update {self.q_func.get_value_network_checksum()}")
+    #     value_network_weights = self.q_func.get_value_network_weights().copy()
+    #     # print(f"value network weights before deltas {self.q_func.weights_checksum(value_network_weights)}")
+    #     for name in value_network_weights:
+    #         value_network_weights[name] += weight_deltas[name]
+    #
+    #     # print(f"update value network weights {self.q_func.weights_checksum(value_network_weights)}")
+    #     self.log.trace(f"checksum value before call to set {self.q_func.get_value_network_checksum()}")
+    #     self.q_func.set_value_network_weights(value_network_weights)
+    #     value_network_weights = deepcopy(self.q_func.get_value_network_weights())
+    #     self.log.trace(f"checksum value after call to set {self.q_func.weights_checksum(value_network_weights)}")
+    #     self.message_all_workers('value_network_weights', value_network_weights)
 
     def train(self):
         print(f"{os.getppid()}: Setting up workers to run asynch q-learning")
-        # Need to make sure workers are spawned rather than forked otherwise keras gets into a deadlock. Which seems
-        # to be due to multiple processes trying to share the same default tensorflow graph.
-        mp.set_start_method('spawn')
 
         # TODO : does this need a max size setting?
-        network_gradients_queue = mp.Queue()
+        grad_update_queue = mp.Queue()
         info_queue = mp.Queue()
 
         # set up the workers
 
         for _ in range(self.options.get('num_workers', 1)):
             worker_queue = mp.Queue()
-            worker = AsyncQLearnerWorker(worker_queue, network_gradients_queue, info_queue, self.options)
+            worker = AsyncQLearnerWorker(self.global_value_network, self.global_target_network,
+                worker_queue, grad_update_queue, info_queue, self.options)
             worker.daemon = True    # helps tidy up child processes if parent dies.
             worker.start()
             self.workers.append((worker, worker_queue))
 
         # Send the workers the starting weights
-        starting_weights = deepcopy(self.q_func.get_value_network_weights())
+        # starting_weights = deepcopy(self.q_func.get_value_network_weights())
         # print(f"init weights for workers {self.q_func.weights_checksum(starting_weights)}")
-        self.message_all_workers('reset_network_weights', starting_weights)
+        # self.message_all_workers('reset_network_weights', starting_weights)
 
         # set up stats_gatherer
         stats_queue = mp.Queue()
@@ -808,64 +791,53 @@ class AsyncQLearningController:
         target_sync_counter = self.options.get('target_net_sync_steps', 1)
         best_reward = None
         best_episode = 0
-        grads_received = 0
-        grads_received_errors = 0
+        grad_updates = 0
+        grads_update_errors = 0
 
         while episode_count < self.options.get('episodes', 1):
 
-            gradient_messages = []
+            grad_update_messages = []
             try:
                 while True:
-                    gradient_messages.append(network_gradients_queue.get(False))
-                    grads_received += 1
-                    self.log.trace(f"got network gradients. Total received={grads_received}, "
-                                   f"error count={grads_received_errors}")
+                    grad_update_messages.append(grad_update_queue.get(False))
+                    grad_updates += 1
+                    self.log.trace(f"got network gradients. Total received={grad_updates}, "
+                                   f"error count={grads_update_errors}")
 
             except Empty:
                 # Nothing to process, so just carry on
                 pass
 
             except Exception as e:
-                grads_received_errors += 1
-                self.log.error(f"Failed to get gradients off the queue. Total received={grads_received}, "
-                               f"error count={grads_received_errors}", e)
+                grads_update_errors += 1
+                self.log.error(f"Failed to get gradients off the queue. Total received={grad_updates}, "
+                               f"error count={grads_update_errors}", e)
 
-            if len(gradient_messages) > 0:
-                # print(f"apply the gradients, count of messages = {len(gradient_messages)}")
-                # weight_deltas = None
+            if len(grad_update_messages) > 0:
                 accum_grads = None
-                self.log.trace(f"accumulate grads from {len(gradient_messages)} messages")
-                for (steps, parameter_grads) in gradient_messages:
+                self.log.trace(f"accumulate steps from {len(grad_update_messages)} messages")
+                for steps in grad_update_messages:
                     total_steps += steps
                     target_sync_counter -= steps
-                    # get changes
-                    if accum_grads is None:
-                        accum_grads = parameter_grads
-                    else:
-                        accum_grads += parameter_grads
-
-                self.log.trace(f"apply grads to network")
-                self.q_func.apply_grads(parameter_grads)
-
-                # Let workers know of the changes.
-                self.log.trace(f"broadcast updated network weights")
-                self.broadcast_value_network_weights()
-
-                # if weight_deltas is not None:
-                #     # if len(gradient_messages) > 1:
-                #     #     # multiple gradient messages - need to take an average...
-                #     #     # print(f"Multiple gradient messages ({len(gradient_messages)}), so take an average")
-                #     #     # TODO: check how we should handle this
-                #     #     for i in range(len(gradient_deltas)):
-                #     #         gradient_deltas[i] /= len(gradient_messages)
-                #      #        self.update_value_network_weights(weight_deltas)
+                #     # get changes
+                #     if accum_grads is None:
+                #         accum_grads = parameter_grads
+                #     else:
+                #         accum_grads += parameter_grads
+                #
+                # self.log.trace(f"apply grads to network")
+                # self.q_func.apply_grads(accum_grads)
+                #
+                # # Let workers know of the changes.
+                # self.log.trace(f"broadcast updated network weights")
+                # self.broadcast_value_network_weights()
 
             if target_sync_counter <= 0:
                 # synch the target weights with the value weights, then let the workers know.
                 self.q_func.synch_value_and_target_weights()
-                network_weights = self.q_func.get_target_network_weights()
+                # network_weights = self.q_func.get_target_network_weights()
                 # print(f"target network synch {self.q_func.weights_checksum(network_weights)}")
-                self.message_all_workers('target_network_weights', network_weights)
+                # self.message_all_workers('target_network_weights', 'updated')
                 target_sync_counter = self.options.get('target_net_sync_steps', 1)
 
             try:
@@ -924,11 +896,27 @@ def register_gym_mods():
         reward_threshold=-110.0
     )
 
-def create_and_run_agent():
+def create_and_run_agent(options):
 
     timer = Timer()
     timer.start("agent")
-    agent = AsyncQLearningController(options={
+
+    agent = AsyncQLearningController(options)
+    agent.train()
+
+    timer.stop('agent')
+    elapsed = timer.event_times['agent']
+    hours = int(elapsed / 3600)
+    elapsed = elapsed - 3600*hours
+    mins = int(elapsed / 60)
+    secs = int(elapsed - 60*mins)
+    print(f"Total time taken by agent is {hours} hours {mins} mins {secs} secs")
+
+if __name__ == '__main__':
+    print("Use spawn - hopefully works on all op sys.")
+    mp.set_start_method('spawn')
+
+    options = {
         # 'env_name': "Acrobot-v1",
         # 'observation_shape': (6, ),
         # 'actions': [0, 1, 2],
@@ -940,9 +928,9 @@ def create_and_run_agent():
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'num_workers': 2,
-        'episodes': 500,
-        'async_update_freq': 20,
+        'num_workers': 4,
+        'episodes': 2000,
+        'async_update_freq': 5,
         'target_net_sync_steps': 1000,
         'sync_tau': 1.0,
         'adam_learning_rate': 0.001,
@@ -950,22 +938,22 @@ def create_and_run_agent():
         'load_weights': False,
         'save_weights': True,
         'stats_epsilon': 0.01,
-        'epsilon': 0.75,
+        'epsilon': 1.0,
         'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 150,
-        'stats_every': 10,  # how frequently to collect stats
+        'epsilon_decay_episodes': 400,
+        'stats_every': 20,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
-    })
+                    }
 
-    agent.train()
-    timer.stop('agent')
-    elapsed = timer.event_times['agent']
-    hours = int(elapsed / 3600)
-    elapsed = elapsed - 3600*hours
-    mins = int(elapsed / 60)
-    secs = int(elapsed - 60*mins)
-    print(f"Total time taken by agent is {hours} hours {mins} mins {secs} secs")
+    # for lr in [0.01, 0.001, 0.0001]:
+    #     for num_workers in [1, 2, 4]:
+    #         options['plot_filename'] = f'async_rewards_w_{num_workers}_lr_{lr}.png'
+    #         options['plot_title'] = f"Asynch Q-Learning {num_workers} workers, lr={lr}"
+    #         options['num_workers'] = num_workers
+    #         options['adam_learning_rate'] = lr
+    #         create_and_run_agent(options)
 
-if __name__ == '__main__':
-    create_and_run_agent()
+    options['plot_filename'] = f'async_rewards_w_4_eps_decay_400.png'
+    options['plot_title'] = f"Asynch Q-Learning 4 workers, eps_decay=400"
+    create_and_run_agent(options)
