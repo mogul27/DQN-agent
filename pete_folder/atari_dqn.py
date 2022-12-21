@@ -12,11 +12,10 @@ import matplotlib.pyplot as plt
 
 import cv2
 
-from keras import Model
-from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Flatten
-from keras.losses import Huber
-from keras.optimizers import Adam
+import torch
+import torch.nn as nn
+import torch.nn.functional
+import torch.optim
 
 from dqn_utils import ReplayMemory, DataWithHistory, Timer, Options
 
@@ -32,7 +31,7 @@ class EGreedyPolicy:
         :param options: can contain:
             'epsilon': small epsilon for the e-greedy policy. This is the probability that we'll
                        randomly select an action, rather than picking the best.
-            'epsilon_decay_span': the number of calls over which to decay epsilon
+            'epsilon_decay_episodes': the number of episodes over which to decay epsilon
             'epsilon_min': the min value epsilon can be after decay
         """
         self.options = Options(options)
@@ -41,15 +40,13 @@ class EGreedyPolicy:
         self.q_func = q_func
         self.epsilon = self.options.get('epsilon')
         self.possible_actions = self.q_func.actions
-        if self.options.get('epsilon_decay_episodes') is None:
+        decay_episodes = self.options.get('epsilon_decay_episodes', 0)
+        if decay_episodes == 0:
             self.epsilon_min = self.epsilon
             self.epsilon_decay = 0
         else:
-            if self.options.get('epsilon_min') is None:
-                self.epsilon_min = 0
-            else:
-                self.epsilon_min = self.options.get('epsilon_min')
-            self.epsilon_decay = (self.epsilon - self.epsilon_min) / self.options.get('epsilon_decay_episodes')
+            self.epsilon_min = self.options.get('epsilon_min', 0)
+            self.epsilon_decay = (self.epsilon - self.epsilon_min) / decay_episodes
 
     def select_action(self, state):
         """ The EGreedy policy selects the best action the majority of the time. However, a random action is chosen
@@ -71,9 +68,34 @@ class EGreedyPolicy:
         return random.choice(self.possible_actions)
 
     def decay_epsilon(self):
-        # decay epsilon for next time
+        # decay epsilon for next time - needs to be called at the end of an episode.
         if self.epsilon > self.epsilon_min:
             self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
+
+
+# PyTorch models inherit from torch.nn.Module
+class QNetwork(nn.Module):
+    """ Define neural network to be used by the DQN as both q-network and target-network
+
+    """
+    def __init__(self, options):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=(4, 4), stride=(2, 2))
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1))
+        self.flatten1 = nn.Flatten()
+        self.fc1 = nn.Linear(3136, 512)
+        self.fc2 = nn.Linear(512, len(options.get('actions')))
+
+    def forward(self, x):
+        x = torch.nn.functional.relu(self.conv1(x))
+        x = torch.nn.functional.relu(self.conv2(x))
+        x = torch.nn.functional.relu(self.conv3(x))
+        x = self.flatten1(x)
+        x = torch.nn.functional.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 
 class FunctionApprox:
@@ -84,57 +106,93 @@ class FunctionApprox:
         self.actions = self.options.get('actions')
         self.q_hat = self.build_neural_network()
         self.q_hat_target = self.build_neural_network()
-        self.synch_value_and_target_weights()
-        self.batch = []
+        # set target weights to match q-network
+        self.q_hat_target.load_state_dict(self.q_hat.state_dict())
 
-    def save_weights(self, file_name):
-        self.q_hat.save_weights(file_name)
+        self.loss_fn = self.create_loss_function()
+        self.optimizer = self.create_optimizer()
+        self.discount_factor = self.options.get('discount_factor', 0.99)
 
-    def load_weights(self, file_name):
-        if Path(file_name).exists():
-            self.q_hat.load_weights(file_name)
-            self.q_hat_target.load_weights(file_name)
+        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
+        if self.work_dir is not None:
+            # location for files.
+            self.work_dir = Path(self.work_dir)
+            if not self.work_dir.exists():
+                self.work_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_weights_file(self):
+        if self.work_dir is not None:
+            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.pth")
+            return self.work_dir / weights_file_name
+        return None
+
+    def save_weights(self):
+        if self.options.get('save_weights', default=False):
+            weights_file = self.get_weights_file()
+            if weights_file is not None:
+                if not weights_file.parent.exists():
+                    weights_file.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(self.q_hat.state_dict(), weights_file)
+
+    def load_weights(self):
+        if self.options.get('load_weights', default=False):
+            weights_file = self.get_weights_file()
+            if weights_file is not None and weights_file.exists():
+                state_dict = torch.load(weights_file)
+                self.set_value_network_weights(state_dict)
+                self.set_target_network_weights(state_dict)
 
     def synch_value_and_target_weights(self):
         # Copy the weights from action_value network to the target action_value network
-        value_weights = self.q_hat.get_weights()
-        target_weights = self.q_hat_target.get_weights()
-        # TODO : consider moving towards the value weights, rather than a complete replacement.
-        sync_tau = self.options.get('sync_tau', 1.0)
-        for i in range(len(target_weights)):
-            target_weights[i] = (1 - sync_tau) * target_weights[i] + sync_tau * value_weights[i]
-        self.q_hat_target.set_weights(target_weights)
+        sync_beta = self.options.get('sync_beta', 1.0)
+        state_dict = self.q_hat.state_dict().copy()
+        target_state_dict = self.q_hat_target.state_dict()
+        for name in state_dict:
+            state_dict[name] = sync_beta * state_dict[name] + (1.0 - sync_beta) * target_state_dict[name]
+        self.set_target_network_weights(state_dict)
+
+    def create_loss_function(self):
+        return nn.HuberLoss()
+
+    def create_optimizer(self):
+        adam_learning_rate = self.options.get('adam_learning_rate', 0.0001)
+        return torch.optim.Adam(self.q_hat.parameters(), lr=adam_learning_rate)
+
+    # TODO : update the getting / setting weights
+    def get_value_network_weights(self):
+        # TODO : do we need to clone the weights ?
+        return self.q_hat.state_dict()
+
+    def set_value_network_weights(self, weights):
+        # TODO : do we need the copy?
+        self.q_hat.load_state_dict(weights)
 
     def get_value_network_checksum(self):
-        return self.weights_checksum(self.q_hat.get_weights())
+        return self.weights_checksum(self.q_hat.state_dict())
+
+    def get_target_network_weights(self):
+        return self.q_hat_target.state_dict()
+
+    def set_target_network_weights(self, weights):
+        self.q_hat_target.load_state_dict(weights)
 
     def get_target_network_checksum(self):
-        return self.weights_checksum(self.q_hat_target.get_weights())
+        return self.weights_checksum(self.q_hat_target.state_dict())
 
-    def weights_checksum(self, weights):
+    def weights_checksum(self, state_dict):
         checksum = 0.0
-        for layer_weights in weights:
-            checksum += layer_weights.sum()
+        for name, layer_weights_or_bias in state_dict.items():
+            checksum += layer_weights_or_bias.sum()
         return checksum
 
     def build_neural_network(self):
-        # Crete neural network model to predict actions for states.
+        # Create neural network model to predict actions for states.
         try:
-            # TODO : give all the layers and models names to indicate worker / controller ?
+            network = QNetwork(self.options)
 
-            network = Sequential()
-            # TODO : Find the best arrangement for the ConvNet
-            network.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=(84, 84, 4)))
-            network.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
-            network.add(Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu'))
-            network.add(Flatten())
-            network.add(Dense(512, activation='relu'))
-            network.add(Dense(len(self.actions), activation='linear'))
-            network.summary()
-
-            # compile the model
-            optimizer = Adam(learning_rate=self.options.get('adam_learning_rate', 0.001))
-            network.compile(loss=Huber(delta=1.0), optimizer=optimizer)
+            # network summary
+            print(f"network summary:")
+            print(network)
 
             return network
 
@@ -146,41 +204,56 @@ class FunctionApprox:
         # N = number of states,
         # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
         # and also add another level.
+        # not needed in pytorch
         try:
             return np.transpose(np.array(states), (0, 2, 3, 1))
         except Exception as e:
             print(f"transpose failed for : {states}")
             raise e
 
-    def get_value(self, state, action):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
-        return prediction[0][action]
-
     def get_all_action_values(self, states):
-        return self.q_hat.predict_on_batch(self.transpose_states(states))
-
-    def get_target_value(self, state, action):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
-        return prediction[0][action]
-
-    def get_max_target_value(self, state):
-        prediction = self.q_hat_target.predict_on_batch(self.transpose_states([state]))
-        return max(prediction[0])
+        return self.q_hat(torch.Tensor(states))
 
     def get_max_target_values(self, states):
-        predictions = self.q_hat_target.predict_on_batch(self.transpose_states(states))
-        return predictions.max(axis=1)
+        predictions = self.q_hat_target(torch.Tensor(states))
+        return torch.max(predictions, axis=1).values
 
     def best_action_for(self, state):
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
-        return np.argmax(prediction[0])
+        state = torch.Tensor(np.array([state]))
+        prediction = self.q_hat(state)
+        return torch.argmax(prediction).item()
 
-    def update_batch(self, batch):
-        # do the update in batches
-        states = np.array([s for (s, new_action_value) in batch])
-        new_action_values = np.array([new_action_value for (s, new_action_value) in batch])
+    def process_batch(self, states, actions, rewards, next_states, terminal):
+        """ Process the batch and update the q_func, value function approximation.
 
-        return self.q_hat.train_on_batch(self.transpose_states(states), new_action_values)
+        :param states: List of states
+        :param actions: List of actions, one for each state
+        :param rewards: List of rewards, one for each state
+        :param next_states: List of next_states, one for each state
+        :param terminal: List of terminal, one for each state
+        """
+        # If it's not
+        not_terminal = torch.IntTensor([1 if not t else 0 for t in terminal])
+        rewards = torch.Tensor(rewards)
+        # Make predictions for this batch
+        predicted_action_values = self.get_all_action_values(np.array(states))
+        next_state_action_values = self.get_max_target_values(np.array(next_states))
+
+        y = rewards + not_terminal * self.discount_factor * next_state_action_values
+        new_action_values = predicted_action_values.clone()
+        # new_action_values is a 2D tensor. Each row is the action values for a state.
+        # actions contains a list with the action to be updated for each state (row in the new_action_values tensor)
+        new_action_values[torch.arange(new_action_values.size(0)), actions] = y
+
+        # Zero the gradients for every batch!
+        self.optimizer.zero_grad()
+
+        # Compute the loss and its gradients
+        loss = self.loss_fn(predicted_action_values, new_action_values)
+        loss.backward()
+
+        # Adjust learning weights
+        self.optimizer.step()
 
 
 class AgentDqn:
@@ -188,7 +261,7 @@ class AgentDqn:
     def __init__(self, options):
         """ Set up the FunctionApprox and policy so that training runs keep using the same.
 
-        :param options:
+        :param options: An Options object or Dict containing all the options.
         """
         self.options = Options(options)
 
@@ -206,24 +279,20 @@ class AgentDqn:
             if not self.work_dir.exists():
                 self.work_dir.mkdir(parents=True, exist_ok=True)
 
-        self.discount_factor = self.options.get('discount_factor', 0.99)
-
         self.num_lives = 0
 
         self.q_func = FunctionApprox(options)
-        if self.options.get('load_weights', False) and self.work_dir is not None:
-            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.h5")
-            weights_file_name = Path(weights_file_name).name
-            weights_file = os.fspath(self.work_dir / weights_file_name)
-            self.q_func.load_weights(weights_file)
-        self.policy = EGreedyPolicy(self.q_func, self.options)
+        self.q_func.load_weights()
+
+        self.policy = EGreedyPolicy(self.q_func, options)
         self.play_policy = EGreedyPolicy(self.q_func, {'epsilon': self.options.get('stats_epsilon')})
         # load replay memory data?
-        if self.work_dir is None:
+        if self.work_dir is None or not self.options.get('load_replay', False):
             replay_memory_file = None
         else:
             replay_memory_file = os.fspath(self.work_dir / 'replay_memory.pickle')
-        self.replay_memory = ReplayMemory(max_len=100000, history=3, file_name=replay_memory_file)
+        self.replay_memory = ReplayMemory(max_len=self.options.get('replay_max_size', 100000), history=3,
+                                          file_name=replay_memory_file)
         self.max_delta = None
         self.min_delta = None
         self.log_file = self.create_log_file()
@@ -360,7 +429,7 @@ class AgentDqn:
         return total_reward, action_frequency
 
     def train(self, env, cycle_start, cycle_end):
-        sync_weights_count = 0
+        target_sync_counter = 0
         agent_rewards = []
         frame_count = 0
         state_with_history = [DataWithHistory.empty_state() for i in range(4)]
@@ -390,11 +459,11 @@ class AgentDqn:
             actions_before_replay = self.options.get('actions_before_replay', 1)
 
             while not terminated and not truncated:
-                # sync value and target weights based on sync_weights_count option.
-                sync_weights_count -= 1
-                if sync_weights_count <= 0:
+                # sync value and target weights based on target_sync_counter option.
+                target_sync_counter -= 1
+                if target_sync_counter <= 0:
                     self.q_func.synch_value_and_target_weights()
-                    sync_weights_count = self.options.get('sync_weights_count', 250)
+                    target_sync_counter = self.options.get('target_sync_counter', 250)
 
                 # Take action A, observe R, S'
                 next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
@@ -430,91 +499,30 @@ class AgentDqn:
 
             self.policy.decay_epsilon()
 
-        # TODO : save the weights?
-        if self.options.get('save_weights', False) and self.work_dir is not None:
-            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}.h5")
-            weights_file_name = Path(weights_file_name).name
-            weights_file = os.fspath(self.work_dir / weights_file_name)
-            self.q_func.save_weights(weights_file)
+        self.q_func.save_weights()
 
         self.replay_memory.save()
 
         return agent_rewards, frame_count
-
-    def process_batch(self, mini_batch):
-        """ Process the batch and update the q_func, value function approximation.
-
-        :param state_action_batch: List of tuples with state, action, reward, next_state, terminated
-        """
-        # process the batch - get the values and target values in single calls
-        # TODO : make this neater - vector based?
-        states = [data_item.get_state() for data_item in mini_batch]
-        next_states = [data_item.get_next_state() for data_item in mini_batch]
-        qsa_action_values = self.q_func.get_all_action_values(states)
-        next_state_action_values = self.q_func.get_max_target_values(next_states)
-        discounted_next_qsa_values = self.discount_factor * next_state_action_values
-        updates = []
-        min_d = None
-        max_d = None
-        min_q = None
-        max_q = None
-        # weights = self.q_func.get_value_network_weights()
-        # print(f"worker {self.pid} : weights[0][0][0][0][0:5] {weights[0][0][0][0][0:5]}")
-        # print(f"worker {self.pid} : weights[1][0] {weights[1][0]}")
-        #
-        # print(f"worker {self.pid} : a={actions} : r={rewards} : qsa={qsa_action_values} : qsa_next={discounted_next_qsa_values}")
-        for data_item, qsa_action_value, discounted_next_qsa_value in zip(mini_batch, qsa_action_values, discounted_next_qsa_values):
-            a = data_item.get_action()
-            s = data_item.get_state()
-            r = data_item.get_reward()
-            if data_item.is_terminated():
-                y = r
-            else:
-                y = r + discounted_next_qsa_value
-
-            delta = qsa_action_value[a] - y
-
-            if min_d is None:
-                min_d = delta
-                max_d = delta
-            else:
-                min_d = min(delta, min_d)
-                max_d = max(delta, max_d)
-
-            if min_q is None:
-                min_q = qsa_action_value[a]
-                max_q = qsa_action_value[a]
-            else:
-                min_q = min(qsa_action_value[a], min_q)
-                max_q = max(qsa_action_value[a], max_q)
-
-            # update the action value to move closer to the target
-            qsa_action_value[a] = y
-
-            updates.append((s, qsa_action_value))
-
-        losses = self.q_func.update_batch(updates)
-        return losses, min_d, max_d, min_q, max_q
 
     def replay_steps(self):
         """ Select items from the replay_memory and use them to update the q_func, value function approximation.
 
         :param replay_num: Number of random steps to replay - currently includes the latest step too.
         """
-        batch = self.replay_memory.get_batch(self.options.get('mini_batch_size', 32))
-        loss, min_d, max_d, min_q, max_q = self.process_batch(batch)
-        # if min_delta is None:
-        #     min_delta = min_d
-        #     max_delta = max_d
-        # else:
-        #     min_delta = min(min_d, min_delta)
-        #     max_delta = min(max_d, max_delta)
-        # if min_q_value is None:
-        #     min_q_value = min_q
-        #     max_q_value = max_q
-        # else:
-        #     min_q_value = min(min_q, min_q_value)
-        #     max_q_value = min(max_q, max_q_value)
+
+        states, actions, rewards, next_states, terminal = [], [], [], [], []
+        # get the data from the replay memory
+        indexes = np.random.randint(0, high=self.replay_memory.size, size=self.options.get('mini_batch_size', 32))
+        for i in indexes:
+            data_item = self.replay_memory.get_item(i)
+            states.append(data_item.get_state())
+            actions.append(data_item.get_action())
+            rewards.append(data_item.get_reward())
+            next_states.append(data_item.get_next_state())
+            terminal.append(data_item.is_terminated())
+        self.q_func.process_batch(states, actions, rewards, next_states, terminal)
+
 
     def reformat_observation(self, obs, previous_obs=None):
         # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
@@ -663,18 +671,18 @@ def main():
         # 'observation_shape': (84, 84, 4),
         'actions': [0, 1, 2, 3],
         'start_episode_num': 1,
-        'episodes': 1000,
+        'episodes': 100,
         'mini_batch_size': 32,
         'actions_before_replay': 4,
         'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
-        'sync_weights_count': 1000,  # TODO : rename this to target_sync_counter to match asynch code
-        # 'sync_tau': 0.0001,
+        'target_sync_counter': 1000,
+        # 'sync_beta': 1.0,
         'load_weights': True,
         'save_weights': True,
         'replay_init_size': 50000,
         'replay_max_size': 250000,
-        'replay_load': True,
+        'load_replay': True,
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
         'epsilon_min': 0.1,
@@ -687,8 +695,8 @@ def main():
     # options['episodes'] = 1
     # options['render'] = 'human'
 
-    options['start_episode_num'] = 3001
-    options['epsilon'] = 0.1
+    # options['start_episode_num'] = 3001
+    # options['epsilon'] = 0.1
     # options['adam_learning_rate'] = 0.00001
     # options['env_name'] = "ALE/Pong-v5"
     # options['actions'] = [0, 1, 2, 3, 4, 5]

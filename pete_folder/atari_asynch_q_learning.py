@@ -143,7 +143,7 @@ class FunctionApprox:
             weights_file = self.get_weights_file()
             if weights_file is not None:
                 if not weights_file.parent.exists():
-                    weights_file.parent().mkdir(parents=True, exist_ok=True)
+                    weights_file.parent.mkdir(parents=True, exist_ok=True)
                 torch.save(self.q_hat.state_dict(), weights_file)
 
     def load_weights(self):
@@ -213,12 +213,8 @@ class FunctionApprox:
         # N = number of states,
         # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
         # and also add another level.
+        # Not needed in pytorch
         return np.transpose(np.array(states), (0, 2, 3, 1))
-
-    def get_value(self, state, action):
-        # TODO : test if we actually need the transpose.
-        prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
-        return prediction[0][action]
 
     def get_all_action_values(self, states):
         return self.q_hat(torch.Tensor(states))
