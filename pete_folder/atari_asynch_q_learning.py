@@ -204,6 +204,7 @@ class FunctionApprox:
             print(network)
 
             return network
+
         except Exception as e:
             print(f"failed to create model : {e}")
 

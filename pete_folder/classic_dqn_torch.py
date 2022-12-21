@@ -186,6 +186,7 @@ class FunctionApprox:
             # compile the model?
 
             return network
+
         except Exception as e:
             print(f"failed to create model : {e}")
 
