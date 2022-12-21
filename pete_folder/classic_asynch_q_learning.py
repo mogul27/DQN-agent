@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import gym
 
-from dqn_utils import Options, Timer
+from dqn_utils import Options, Timer, Logger
 
 import torch
 import torch.nn as nn
@@ -20,43 +20,6 @@ import torch.optim
 import numpy as np
 
 import traceback
-
-
-class Logger:
-    """ basic logger """
-    ERROR = 5
-    WARN = 4
-    INFO = 3
-    DEBUG = 2
-    TRACE = 1
-
-    def __init__(self, log_level, name=""):
-        self.log_level = log_level
-        self.name = name
-
-    def print(self, level, message):
-        print(f"{level:6}: {self.name} : {message}")
-
-    def trace(self, message):
-        if self.log_level <= Logger.TRACE:
-            self.print('TRACE', message)
-
-    def debug(self, message):
-        if self.log_level <= Logger.DEBUG:
-            self.print('DEBUG', message)
-
-    def info(self, message):
-        if self.log_level <= Logger.INFO:
-            self.print('INFO', message)
-
-    def warn(self, message):
-        if self.log_level <= Logger.WARN:
-            self.print('WARN', message)
-
-    def error(self, message, e=None):
-        stack_trace = "\n".join(traceback.format_stack()[-6:-1])
-        if self.log_level <= Logger.ERROR:
-            self.print('ERROR', f"{message}\n{type(e)}: {e}\n{stack_trace}")
 
 
 class EGreedyPolicy:
@@ -126,12 +89,12 @@ class QNetwork(nn.Module):
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, len(self.options.get('actions')))
 
+
     def forward(self, x):
         x = torch.nn.functional.relu(self.fc1(x))
         x = torch.nn.functional.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
 
 class FunctionApprox:
 
@@ -149,7 +112,6 @@ class FunctionApprox:
             self.q_hat_target.load_state_dict(self.q_hat.state_dict())
         else:
             self.q_hat_target = q_hat_target
-        self.batch = []
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
         self.discount_factor = self.options.get('discount_factor', 0.99)
@@ -224,15 +186,13 @@ class FunctionApprox:
         return checksum
 
     def build_neural_network(self):
-        # Crete neural network model to predict actions for states.
+        # Create neural network model to predict actions for states.
         try:
             network = QNetwork(self.options)
 
             # network summary
             print(f"network summary:")
             print(network)
-
-            # compile the model?
 
             return network
         except Exception as e:
@@ -321,7 +281,7 @@ class AsyncQLearnerWorker(mp.Process):
                 if msg_code in self.tasks:
                     self.tasks[msg_code] = content
                 else:
-                    print(f"ignored unrecognised message {msg_code}")
+                    self.log.warn(f"ignored unrecognised message {msg_code}")
             except Empty:
                 # Nothing to process, so just carry on
                 read_messages = False
@@ -388,8 +348,8 @@ class AsyncQLearnerWorker(mp.Process):
         self.q_func = FunctionApprox(self.options, self.global_value_network, self.global_target_network)
 
         self.policy = EGreedyPolicy(self.q_func, self.options)
-        print(f"Created policy epsilon={self.policy.epsilon}, "
-              f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
+        self.log.info(f"Created policy epsilon={self.policy.epsilon}, "
+                      f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
         steps = 0
         steps_since_async_update = 0
@@ -519,7 +479,6 @@ class AsyncStatsCollector(mp.Process):
             return
 
         if self.tasks['play'] is not None:
-            # print(f"update the value network weights")
             contents = self.tasks['play']
             self.tasks['play'] = None
             self.log.trace(f"stats_collector: update weights for play "
@@ -668,7 +627,7 @@ class AsyncQLearningController:
         self.options = Options(options)
         self.q_func = FunctionApprox(self.options)
         self.global_value_network = self.q_func.q_hat
-        self.global_target_network = self.q_func.q_hat
+        self.global_target_network = self.q_func.q_hat_target
         self.global_value_network.share_memory()
         self.global_target_network.share_memory()
         self.q_func.load_weights()
@@ -828,7 +787,7 @@ def create_and_run_agent(options):
     print(f"Total time taken by agent is {hours} hours {mins} mins {secs} secs")
 
 if __name__ == '__main__':
-    print("Use spawn - hopefully works on all op sys.")
+    print("Use spawn - should work on all op sys.")
     mp.set_start_method('spawn')
 
     options = {
@@ -847,10 +806,10 @@ if __name__ == '__main__':
         'episodes': 2000,
         'async_update_freq': 5,
         'target_net_sync_steps': 1000,
-        'sync_tau': 1.0,
+        'sync_beta': 1.0,
         'adam_learning_rate': 0.001,
         'discount_factor': 0.85,
-        'load_weights': True,
+        'load_weights': False,
         'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
@@ -859,7 +818,7 @@ if __name__ == '__main__':
         'stats_every': 20,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
-        'worker_throttle': 0.0001,       # 0.001 looked ok for 4 workers, and 0.005 or 0.01 for 8
+        'worker_throttle': 0.001,       # 0.001 looked ok for 4 workers, and 0.005 or 0.01 for 8
     }
 
     # for lr in [0.01, 0.001, 0.0001]:

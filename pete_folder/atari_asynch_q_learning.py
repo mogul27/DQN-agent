@@ -84,15 +84,6 @@ class QNetwork(nn.Module):
 
     """
     def __init__(self, options):
-        # TODO : expand this for the conv network used by the atari dqn
-        # inputs = Input((84, 84, 4))
-        # conv_1 = Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu')(inputs)
-        # conv_2 = Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu')(conv_1)
-        # conv_3 = Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu')(conv_2)
-        # flatten = Flatten()(conv_3)
-        # dense_1 = Dense(512, activation='relu')(flatten)
-        # outputs = Dense(4, activation=None)(dense_1)
-        # cnn = Model(inputs=inputs, outputs=outputs)
         super().__init__()
 
         self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
@@ -224,6 +215,7 @@ class FunctionApprox:
         return np.transpose(np.array(states), (0, 2, 3, 1))
 
     def get_value(self, state, action):
+        # TODO : test if we actually need the transpose.
         prediction = self.q_hat.predict_on_batch(self.transpose_states([state]))
         return prediction[0][action]
 
