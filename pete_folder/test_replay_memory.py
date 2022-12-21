@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+import os
 from dqn_utils import ReplayMemory, DataWithHistory
 
 
@@ -80,6 +81,41 @@ class MemoryReplayTest(unittest.TestCase):
         data_item = replay_memory.get_item(3)
         self.assertEqual(('state new', 1, 0, 'state next', True), data_item.data[0])
 
+    def test_load_save_from_file(self):
+        file_name = 'test_replay_memory.pickle'
+        if os.path.isfile(file_name):
+            # remove any previous so that the initial creation uses the supplied max_len and history values.
+            os.remove(file_name)
+
+        replay_memory = ReplayMemory(max_len=5, history=0, file_name=file_name)
+        # fill up the memory
+        for i in range(4):
+            replay_memory.add(f"state {i}", i % 4, i, f"state {i+1}", False)
+        self.assertEqual(4, replay_memory.size)
+
+        replay_memory.save()
+        replay_memory.add(f"state unsaved", 12, 3, f"next state unsaved", False)
+
+        data_item = replay_memory.get_item(4)
+        self.assertEqual((f"state unsaved", 12, 3, f"next state unsaved", False), data_item.data[0])
+        self.assertEqual(5, replay_memory.size)
+
+        ## reload replay memory - this shouldn't have the 5th item, but should have the previous 4
+        replay_memory = ReplayMemory(max_len=50, history=4, file_name='test_replay_memory.pickle')
+
+        # loaded data overrides given parameters, so size will be 4 and history 0
+        self.assertEqual(4, replay_memory.size)
+        self.assertEqual(0, replay_memory.history)
+
+        # second item should now be state 1
+        data_item = replay_memory.get_item(1)
+        self.assertEqual(('state 1', 1, 1, 'state 2', False), data_item.data[0])
+
+        # forth item should now be state 3
+        data_item = replay_memory.get_item(3)
+        self.assertEqual(('state 3', 3, 3, 'state 4', False), data_item.data[0])
+
+
 
 class DataWithHistoryTest(unittest.TestCase):
 
@@ -105,6 +141,16 @@ class DataWithHistoryTest(unittest.TestCase):
         no_state = DataWithHistory.empty_state()
         self.assertTrue(np.array_equal(no_state, state[1]))
         self.assertTrue(np.array_equal(no_state, state[0]))
+
+    def test_transpose_for_empty_data_items(self):
+        # create DataWithHistory using empty records
+        data = [(DataWithHistory.empty_state(), i % 4, i, DataWithHistory.empty_state(), i == 1) for i in range(4)]
+        data_with_history = DataWithHistory(data)
+
+        state = data_with_history.get_state()
+
+        transposed_states = np.transpose(np.array([state]), (0, 2, 3, 1))
+        self.assertEqual((1, 84, 84, 4), transposed_states.shape)
 
 
 

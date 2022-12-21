@@ -2,6 +2,8 @@ from collections import deque
 import random
 import numpy as np
 import time
+import pickle
+import os
 
 
 class ReplayMemory:
@@ -12,20 +14,27 @@ class ReplayMemory:
     It can then return a random selection from this list, and ass the memory is contiguous it can return the
     recent history too.
     """
-    def __init__(self, max_len=10000, history=3):
+    def __init__(self, max_len=10000, history=3, file_name=None):
         """
         :param max_len: The amount of items to hold in the memory
         :param history: Amount of history to include with each data entry returned : default 3
+        :param file_name: name of file to load/save replay memory from/to. If the file exists, then it is loaded
+        during init and overrides max_len, history, etc. If no file exists, a new memory is created with the
+        supplied values.
         """
         # TODO : Check if deque is best approach. It should be good for pop/append, but probably not so good
         #      : for the retrieve.
-        self._data = deque()
-        self.size = 0
-        self.max_len = max_len
-        self.history = history
-        for _ in range(history):
-            # Add some empty states to fill up the history to start.
-            self._data.append((DataWithHistory.empty_state(), 0, 0, DataWithHistory.empty_state(), False))
+        self.file_name = file_name
+        if file_name is None or not os.path.isfile(file_name):
+            self._data = deque()
+            self.size = 0
+            self.max_len = max_len
+            self.history = history
+            for _ in range(history):
+                # Add some empty states to fill up the history to start.
+                self._data.append((DataWithHistory.empty_state(), 0, 0, DataWithHistory.empty_state(), False))
+        else:
+            self.load()
 
     def add(self, state, action, reward, next_state, terminated):
         if self.size >= self.max_len:
@@ -60,6 +69,22 @@ class ReplayMemory:
         batch = [self.get_item(random.randrange(0, self.size)) for i in range(batch_size)]
 
         return batch
+
+    def save(self):
+        if self.file_name is not None:
+            with open(self.file_name, 'wb') as file:
+                pickle.dump(self.size, file)
+                pickle.dump(self.max_len, file)
+                pickle.dump(self.history, file)
+                pickle.dump(self._data, file)
+
+    def load(self):
+        if self.file_name is not None and os.path.isfile(self.file_name):
+            with open(self.file_name, 'rb') as file:
+                self.size = pickle.load(file)
+                self.max_len = pickle.load(file)
+                self.history = pickle.load(file)
+                self._data = pickle.load(file)
 
 
 class DataWithHistory:
@@ -142,5 +167,36 @@ class Timer:
             print(f"{name} : {elapsed:0.1f} seconds")
 
 
+class Options:
+
+    def __init__(self, values=None):
+        """ Copies names and values from supplied Dict / Options object.
+
+        :param values: dict with names and values, or an Option object.
+        """
+        if values is None:
+            self.values = {}
+        else:
+            if isinstance(values, Options):
+                values = values.values
+            self.values = {name: value for name, value in values.items()}
+
+    def default(self, name, value):
+        """ Sets the value if the name not already in options, otherwise leave the value for name as is.
+        """
+        if name not in self.values:
+            self.set(name, value)
+
+    def get(self, name, default=None):
+        """ Get value for name, return default value if the name not in options.
+        """
+        if name in self.values:
+            return self.values[name]
+        return default
+
+    def set(self, name, value):
+        """ Set the value for the option name
+        """
+        self.values[name] = value
 
 
