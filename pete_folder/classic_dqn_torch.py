@@ -5,19 +5,16 @@ import numpy as np
 import random
 import os
 from pathlib import Path
-import time
 import pickle
 from collections import deque
 import matplotlib.pyplot as plt
-
-import cv2
 
 import torch
 import torch.nn as nn
 import torch.nn.functional
 import torch.optim
 
-from dqn_utils import ReplayMemory, DataWithHistory, Timer, Options
+from dqn_utils import Timer, Options
 
 
 class EGreedyPolicy:
@@ -80,21 +77,15 @@ class QNetwork(nn.Module):
     """
     def __init__(self, options):
         super().__init__()
-
-        self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=(4, 4), stride=(2, 2))
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1))
-        self.flatten1 = nn.Flatten()
-        self.fc1 = nn.Linear(3136, 512)
-        self.fc2 = nn.Linear(512, len(options.get('actions')))
+        self.options = Options(options)
+        self.fc1 = nn.Linear(self.options.get('observation_shape')[0], 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, len(self.options.get('actions')))
 
     def forward(self, x):
-        x = torch.nn.functional.relu(self.conv1(x))
-        x = torch.nn.functional.relu(self.conv2(x))
-        x = torch.nn.functional.relu(self.conv3(x))
-        x = self.flatten1(x)
         x = torch.nn.functional.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = torch.nn.functional.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
 
 
@@ -108,7 +99,7 @@ class FunctionApprox:
         self.q_hat_target = self.build_neural_network()
         # set target weights to match q-network
         self.q_hat_target.load_state_dict(self.q_hat.state_dict())
-
+        self.batch = []
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
         self.discount_factor = self.options.get('discount_factor', 0.99)
@@ -130,8 +121,6 @@ class FunctionApprox:
         if self.options.get('save_weights', default=False):
             weights_file = self.get_weights_file()
             if weights_file is not None:
-                if not weights_file.parent.exists():
-                    weights_file.parent.mkdir(parents=True, exist_ok=True)
                 torch.save(self.q_hat.state_dict(), weights_file)
 
     def load_weights(self):
@@ -186,7 +175,7 @@ class FunctionApprox:
         return checksum
 
     def build_neural_network(self):
-        # Create neural network model to predict actions for states.
+        # Crete neural network model to predict actions for states.
         try:
             network = QNetwork(self.options)
 
@@ -194,22 +183,19 @@ class FunctionApprox:
             print(f"network summary:")
             print(network)
 
+            # compile the model?
+
             return network
 
         except Exception as e:
             print(f"failed to create model : {e}")
 
-    def transpose_states(self, states):
-        # states is a 4D array (N, X,Y,Z) with
-        # N = number of states,
-        # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
-        # and also add another level.
-        # not needed in pytorch
-        try:
-            return np.transpose(np.array(states), (0, 2, 3, 1))
-        except Exception as e:
-            print(f"transpose failed for : {states}")
-            raise e
+    # def reset_learning_rate(self, lr):
+    #     K.set_value(self.q_hat.optimizer.learning_rate, lr)
+    #
+    # def get_learning_rate(self):
+    #     return K.get_value(self.q_hat.optimizer.learning_rate)
+
 
     def get_all_action_values(self, states):
         return self.q_hat(torch.Tensor(states))
@@ -219,8 +205,7 @@ class FunctionApprox:
         return torch.max(predictions, axis=1).values
 
     def best_action_for(self, state):
-        state = torch.Tensor(np.array([state]))
-        prediction = self.q_hat(state)
+        prediction = self.q_hat(torch.Tensor(state))
         return torch.argmax(prediction).item()
 
     def process_batch(self, states, actions, rewards, next_states, terminal):
@@ -272,10 +257,12 @@ class AgentDqn:
         self.options.default('epsilon_min', 0.1)
         self.options.default('work_dir', options.get('env_name'))
 
-        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
-        if self.work_dir is not None:
+        self.work_dir = self.options.get('work_dir')
+        if self.options.get('work_dir') is None:
+            self.work_dir = None
+        else:
             # location for files.
-            self.work_dir = Path(self.work_dir)
+            self.work_dir = Path(self.options.get('work_dir'))
             if not self.work_dir.exists():
                 self.work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -286,71 +273,36 @@ class AgentDqn:
 
         self.policy = EGreedyPolicy(self.q_func, options)
         self.play_policy = EGreedyPolicy(self.q_func, {'epsilon': self.options.get('stats_epsilon')})
-        # load replay memory data?
-        if self.work_dir is None or not self.options.get('load_replay', False):
-            replay_memory_file = None
-        else:
-            replay_memory_file = os.fspath(self.work_dir / 'replay_memory.pickle')
-        self.replay_memory = ReplayMemory(max_len=self.options.get('replay_max_size', 100000), history=3,
-                                          file_name=replay_memory_file)
+        # TODO : load replay memory data?
+        # if self.work_dir is None:
+        #     replay_memory_file = None
+        # else:
+        #     replay_memory_file = os.fspath(self.work_dir / 'replay_memory.pickle')
+        self.replay_memory = deque(maxlen=self.options.get('replay_max_size', 100000))
         self.max_delta = None
         self.min_delta = None
-        self.log_file = self.create_log_file()
+        self.total_episodes = 0
 
-    def create_log_file(self):
-        time_stamp = time.strftime("%Y%m%d-%H%M%S")
-        log_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
-        with open(log_file, 'a') as file:
-            file.write(f"episode,episode_steps,reward,value_net,target_net,epsilon\n")
-        return log_file
+    def load_replay_memory(self):
+        if self.options.get('replay_load') and self.work_dir is not None:
+            replay_memory_file = Path(self.work_dir / 'replay_memory.pickle')
+            if os.path.isfile(replay_memory_file):
+                with open(replay_memory_file, 'rb') as file:
+                    self.replay_memory = pickle.load(file)
 
-    def log_episode_detail(self, episode, steps, reward):
-        epsilon = self.policy.epsilon
-        print(f"    Episode {episode} : {steps} steps. Epsilon {epsilon:0.3f} : Total reward {reward}")
-
-        q_net_checksum = self.q_func.get_value_network_checksum()
-        target_net_checksum = self.q_func.get_target_network_checksum()
-
-        with open(self.log_file, 'a') as file:
-            file.write(f"{episode},{steps},{reward}"
-                       f",{q_net_checksum},{target_net_checksum},{epsilon}\n")
-
-    def take_step(self, env, action, skip=3):
-        previous_obs = None
-        life_lost = False
-        obs, reward, terminated, truncated, info = env.step(action)
-        if 'lives' in info:
-            if info['lives'] < self.num_lives:
-                self.num_lives = info['lives']
-                life_lost = True
-        skippy = skip
-        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
-            skippy -= 1
-            previous_obs = obs
-            obs, reward, terminated, truncated, info = env.step(action)
-            if 'lives' in info:
-                if info['lives'] < self.num_lives:
-                    self.num_lives = info['lives']
-                    life_lost = True
-        # # Try adjusting the reward to penalise losing a life / or the game.
-        # if terminated:
-        #     reward = -10
-        # elif life_lost:
-        #     reward = -1
-
-        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
+    def save_replay_memory(self):
+        if self.work_dir is not None:
+            replay_memory_file = Path(self.work_dir / 'replay_memory.pickle')
+            with open(replay_memory_file, 'wb') as file:
+                pickle.dump(self.replay_memory, file)
 
     def init_replay_memory(self, env, initial_size):
+        self.load_replay_memory()
 
-        while self.replay_memory.size < initial_size:
+        initial_size = min(initial_size, self.replay_memory.maxlen)
+        while len(self.replay_memory) < initial_size:
 
-            obs, info = env.reset()
-
-            state = self.reformat_observation(obs)
-
-            if 'lives' in info:
-                # initialise the starting number of lives
-                self.num_lives = info['lives']
+            state, info = env.reset()
 
             terminated = False
             truncated = False
@@ -359,10 +311,10 @@ class AgentDqn:
             while not terminated and not truncated:
 
                 action = self.policy.random_action()
-                next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                next_state, reward, terminated, truncated, info = env.step(action)
 
-                self.replay_memory.add(state, action, reward, next_state, terminated or life_lost)
-                if self.replay_memory.size >= initial_size:
+                self.replay_memory.append((state, action, reward, next_state, terminated or truncated))
+                if len(self.replay_memory) >= initial_size:
                     # Replay memory is the required size, so break out.
                     break
 
@@ -374,24 +326,16 @@ class AgentDqn:
                           f"Something has probably gone wrong...")
                     break
 
-        self.replay_memory.save()
+        self.save_replay_memory()
 
     def play(self, env):
         """ play a single episode using a greedy policy
         :return: Total reward for the game, and a Dict giving the frequency of each action.
         """
         total_reward = 0
-        state_with_history = [DataWithHistory.empty_state() for i in range(4)]
 
         # Init game
-        obs, info = env.reset()
-        state = self.reformat_observation(obs)
-        state_with_history.pop(0)
-        state_with_history.append(state)
-
-        if 'lives' in info:
-            # initialise the starting number of lives
-            self.num_lives = info['lives']
+        state, info = env.reset()
 
         terminated = False
         truncated = False
@@ -401,7 +345,7 @@ class AgentDqn:
         action_frequency = {a: 0 for a in self.q_func.actions}
 
         while not terminated and not truncated:
-            action = self.play_policy.select_action(state_with_history)
+            action = self.play_policy.select_action(state)
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -411,14 +355,11 @@ class AgentDqn:
             else:
                 repeated_action_count = 0
             action_frequency[action] += 1
-            last_obs = obs
 
-            next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+            state, reward, terminated, truncated, info = env.step(action)
 
             total_reward += reward
 
-            state_with_history.pop(0)
-            state_with_history.append(next_state)
             last_action = action
 
             steps += 1
@@ -429,24 +370,15 @@ class AgentDqn:
         return total_reward, action_frequency
 
     def train(self, env, cycle_start, cycle_end):
-        target_sync_counter = 0
+        sync_weights_count = 0
         agent_rewards = []
         frame_count = 0
-        state_with_history = [DataWithHistory.empty_state() for i in range(4)]
 
         for episode in range(cycle_start, cycle_end):
             # Initialise S
-            obs, info = env.reset()
+            state, info = env.reset()
 
-            state = self.reformat_observation(obs)
-            state_with_history.pop(0)
-            state_with_history.append(state)
-
-            action = self.policy.select_action(state_with_history)
-
-            if 'lives' in info:
-                # initialise the starting number of lives
-                self.num_lives = info['lives']
+            action = self.policy.select_action(state)
 
             total_undiscounted_reward = 0
             terminated = False
@@ -459,22 +391,19 @@ class AgentDqn:
             actions_before_replay = self.options.get('actions_before_replay', 1)
 
             while not terminated and not truncated:
-                # sync value and target weights based on target_sync_counter option.
-                target_sync_counter -= 1
-                if target_sync_counter <= 0:
+                # sync value and target weights based on sync_weights_count option.
+                sync_weights_count -= 1
+                if sync_weights_count <= 0:
                     self.q_func.synch_value_and_target_weights()
-                    target_sync_counter = self.options.get('target_sync_counter', 250)
+                    sync_weights_count = self.options.get('sync_weights_count', 250)
 
                 # Take action A, observe R, S'
-                next_state, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
-
-                state_with_history.pop(0)
-                state_with_history.append(next_state)
+                next_state, reward, terminated, truncated, info = env.step(action)
 
                 # Choose A' from S' using policy derived from q_func
-                next_action = self.policy.select_action(state_with_history)
+                next_action = self.policy.select_action(state)
 
-                self.replay_memory.add(state, action, reward, next_state, terminated or life_lost)
+                self.replay_memory.append((state, action, reward, next_state, terminated))
                 total_undiscounted_reward += reward
 
                 state, action = next_state, next_action
@@ -491,17 +420,19 @@ class AgentDqn:
                     print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                     break
 
+            self.total_episodes += 1
+            print(f"    Episode {self.total_episodes} : {steps} steps. Epsilon {self.policy.epsilon:0.3f}"
+                  f" : Total reward {total_undiscounted_reward}")
             frame_count += steps
-            self.log_episode_detail(episode, steps, total_undiscounted_reward)
-
-
             agent_rewards.append(total_undiscounted_reward)
 
             self.policy.decay_epsilon()
 
         self.q_func.save_weights()
 
-        self.replay_memory.save()
+        # TODO : should we save the replay_memory here?
+        #        Might be useful if we're restarting training
+        # self.save_replay_memory()
 
         return agent_rewards, frame_count
 
@@ -513,23 +444,15 @@ class AgentDqn:
 
         states, actions, rewards, next_states, terminal = [], [], [], [], []
         # get the data from the replay memory
-        indexes = np.random.randint(0, high=self.replay_memory.size, size=self.options.get('mini_batch_size', 32))
+        indexes = np.random.randint(0, high=len(self.replay_memory), size=self.options.get('mini_batch_size', 32))
         for i in indexes:
-            data_item = self.replay_memory.get_item(i)
-            states.append(data_item.get_state())
-            actions.append(data_item.get_action())
-            rewards.append(data_item.get_reward())
-            next_states.append(data_item.get_next_state())
-            terminal.append(data_item.is_terminated())
+            s, a, r, ns, t = self.replay_memory[i]
+            states.append(s)
+            actions.append(a)
+            rewards.append(r)
+            next_states.append(ns)
+            terminal.append(t)
         self.q_func.process_batch(states, actions, rewards, next_states, terminal)
-
-
-    def reformat_observation(self, obs, previous_obs=None):
-        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        if previous_obs is not None:
-            np.maximum(obs, previous_obs, out=obs)
-        # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        return cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
 
 
 def register_gym_mods():
@@ -555,7 +478,7 @@ def run(options):
     timer = Timer()
     stats = []
 
-    env = gym.make(options.get('env_name'), obs_type='grayscale', render_mode=options.get('render'))
+    env = gym.make(options.get('env_name'), render_mode=options.get('render'))
 
     agent = AgentDqn(options)
 
@@ -563,7 +486,7 @@ def run(options):
     agent.init_replay_memory(env, options.get('replay_init_size'))
     timer.stop("Init replay memory")
     replay_init_time = int(timer.event_times["Init replay memory"])
-    print(f"Replay memory initialised with {agent.replay_memory.size} items in {replay_init_time} seconds")
+    print(f"Replay memory initialised with {len(agent.replay_memory)} items in {replay_init_time} seconds")
 
     episode_num = options.get('start_episode_num', 1)
     last_episode = episode_num + options.get('episodes') - 1
@@ -575,6 +498,13 @@ def run(options):
     for i in range(training_cycles):
 
         timer.start("Training cycle")
+        # if i == 10:
+        #     print(f"\nreset learning rate to 0.0001")
+        #     agent.q_func.reset_learning_rate(0.0001)
+        # if i == 30:
+        #     print(f"\nreset learning rate to 0.0001")
+        #     agent.q_func.reset_learning_rate(0.00001)
+        # print(f"learning rate = {agent.q_func.get_learning_rate()}")
 
         print(f"\nTraining cycle {i+1} of {training_cycles}:")
         # print(f"Start epsilon = {agent.policy.epsilon:0.5f}"
@@ -608,14 +538,13 @@ def run(options):
         # play the game with greedy policy to get some stats of where we are.
         # Get average for n episodes:
         play_rewards = []
-        while len(play_rewards) < 2:
+        while len(play_rewards) < 5:
             play_reward, action_frequency = agent.play(env)
             play_rewards.append(play_reward)
 
         avg_play_reward = sum(play_rewards) / len(play_rewards)
         stats.append((cycle_end-1, avg_play_reward, agent.policy.epsilon))
         print(f"    Avg play reward from current policy at episode {cycle_end-1} = {avg_play_reward:0.2f}")
-        plot_reward_epsilon(stats, options, file_only=True)
 
     env.close()
     del agent
@@ -632,7 +561,7 @@ def run(options):
     plot_reward_epsilon(stats, options)
 
 
-def plot_reward_epsilon(stats, options, file_only=True):
+def plot_reward_epsilon(stats, options):
     # Plot a graph showing reward against episode, and epsilon
     x = [stat[0] for stat in stats]
     rwd = [stat[1] for stat in stats]
@@ -641,83 +570,81 @@ def plot_reward_epsilon(stats, options, file_only=True):
     fig, ax1 = plt.subplots()
 
     color = 'tab:blue'
-    ax1.set_title(options.get('plot_title', 'DQN rewards and epsilon'))
+    ax1.set_title(options.get('plot_title', 'DQN rewards.'))
     ax1.set_xlabel('episodes')
     ax1.set_ylabel('reward', color=color)
-    # ax1.set_ylim(0, 50)
+    ax1.set_ylim(0, 500)
     ax1.plot(x, rwd, color=color)
     ax1.tick_params(axis='y', labelcolor=color)
 
-    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-    color = 'tab:green'
-    ax2.set_ylabel('epsilon', color=color)  # we already handled the x-label with ax1
-    ax2.plot(x, eps, color=color)
-    ax2.set_ylim(0, 1.0)
-    ax2.tick_params(axis='y', labelcolor=color)
+    # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    #
+    # color = 'tab:green'
+    # ax2.set_ylabel('epsilon', color=color)  # we already handled the x-label with ax1
+    # ax2.plot(x, eps, color=color)
+    # ax2.set_ylim(0, 1.0)
+    # ax2.tick_params(axis='y', labelcolor=color)
 
     fig.tight_layout()
 
-    plt.savefig(options.get('env_name') + '/' + 'rewards.pdf')
-    plt.savefig(options.get('env_name') + '/' + 'rewards.png')
-    plt.close('all')
+    plt.show()
 
 
 def main():
     # run(render='human')
     options = {
-        'env_name': "ALE/Breakout-v5",
+        'env_name': "CartPole-v1",
         # 'render': "human",
-        # 'observation_shape': (84, 84, 4),
-        'actions': [0, 1, 2, 3],
-        'start_episode_num': 1,
-        'episodes': 100,
+        'observation_shape': (4, ),
+        'actions': [0, 1],
+        'episodes': 500,
         'mini_batch_size': 32,
-        'actions_before_replay': 4,
-        'adam_learning_rate': 0.0001,
-        'discount_factor': 0.99,
-        'target_sync_counter': 1000,
-        # 'sync_beta': 1.0,
-        'load_weights': True,
-        'save_weights': True,
-        'replay_init_size': 50000,
+        'actions_before_replay': 1,
+        'adam_learning_rate': 0.001,
+        'discount_factor': 0.85,
+        'sync_weights_count': 400,
+        'sync_beta': 1.0,
+        'load_weights': False,
+        'save_weights': False,
+        'replay_init_size': 10000,
         'replay_max_size': 250000,
-        'load_replay': True,
+        'replay_load': False,
         'stats_epsilon': 0.01,
-        'epsilon': 1.0,
-        'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 750,
+        'epsilon': 0.75,
+        'epsilon_min': 0.25,
+        'epsilon_decay_episodes': 350,
         'stats_every': 10
     }
 
-    # options['replay_init_size'] = 500
-    # options['stats_every'] = 1
-    # options['episodes'] = 1
-    # options['render'] = 'human'
+    # options['replay_init_size'] = replay_init_size
 
-    # options['start_episode_num'] = 3001
-    # options['epsilon'] = 0.1
-    # options['adam_learning_rate'] = 0.00001
-    # options['env_name'] = "ALE/Pong-v5"
-    # options['actions'] = [0, 1, 2, 3, 4, 5]
-
-
-    run(options)
+    # run(options)
     # try different options
     # for replay_init_size in [1000, 2000, 4000, 8000]:
     # replay_init_size = 100
     # options['replay_init_size'] = replay_init_size
     # options['replay_max_size'] = replay_init_size*2
     # options['plot_title'] = f"Reward and training epsilon. replay={replay_init_size} : {2*replay_init_size}"
+    # options['episodes'] = 1
+    # options['plot_title'] = f"xxx"
+    # run(options)
 
-    # # TODO: also decay down to 150 (0.75, 0.25, 150), (0.75, 0.01, 150),
-    # for epsilon_values in [(0.75, 0.1, 350), (0.75, 0.1, 2500), (0.01, 0.01, None)]:
-    #     options['epsilon'] = epsilon_values[0]
-    #     options['epsilon_min'] = epsilon_values[1]
-    #     options['epsilon_decay_episodes'] = epsilon_values[2]
-    #     options['plot_title'] = f"Reward and training epsilon. Values {epsilon_values}"
-    #     options['episodes'] = 2500
-    #     run(options)
+
+    # options['plot_title'] = f"lr=0.001, then 0.0001 after episode 100, then 0.00001 after 300"
+    # options['sync_weights_count'] = 1
+    # options['sync_beta'] = 0.01
+    # options['adam_learning_rate'] = 0.001
+    options['episodes'] = 15
+    # options['save_weights'] = True
+    options['load_weights'] = True
+    run(options)
+    # # TODO run the 0.1 and 1.0
+    # for lr in [0.00001, 0.0001, 0.001]:
+    #         # options['stats_every'] = 1
+    #         # options['episodes'] = 5
+    #         options['adam_learning_rate'] = lr
+    #         options['plot_title'] = f"adam_learning_rate={options['adam_learning_rate']}"
+    #         run(options)
 
 
 if __name__ == '__main__':

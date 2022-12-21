@@ -200,3 +200,39 @@ class Options:
         self.values[name] = value
 
 
+class Logger:
+    """ basic logger """
+    ERROR = 5
+    WARN = 4
+    INFO = 3
+    DEBUG = 2
+    TRACE = 1
+
+    def __init__(self, log_level, name=""):
+        self.log_level = log_level
+        self.name = name
+
+    def print(self, level, message):
+        print(f"{level:6}: {self.name} : {message}")
+
+    def trace(self, message):
+        if self.log_level <= Logger.TRACE:
+            self.print('TRACE', message)
+
+    def debug(self, message):
+        if self.log_level <= Logger.DEBUG:
+            self.print('DEBUG', message)
+
+    def info(self, message):
+        if self.log_level <= Logger.INFO:
+            self.print('INFO', message)
+
+    def warn(self, message):
+        if self.log_level <= Logger.WARN:
+            self.print('WARN', message)
+
+    def error(self, message, e=None):
+        stack_trace = "\n".join(traceback.format_stack()[-6:-1])
+        if self.log_level <= Logger.ERROR:
+            self.print('ERROR', f"{message}\n{type(e)}: {e}\n{stack_trace}")
+

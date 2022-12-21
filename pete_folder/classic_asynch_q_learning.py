@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import torch.multiprocessing as mp
 from queue import Empty
 import os
 from pathlib import Path
@@ -9,9 +9,8 @@ from statistics import mean
 import matplotlib.pyplot as plt
 
 import gym
-import cv2
 
-from dqn_utils import Options, DataWithHistory, Timer, Logger
+from dqn_utils import Options, Timer, Logger
 
 import torch
 import torch.nn as nn
@@ -85,23 +84,17 @@ class QNetwork(nn.Module):
     """
     def __init__(self, options):
         super().__init__()
+        self.options = Options(options)
+        self.fc1 = nn.Linear(self.options.get('observation_shape')[0], 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, len(self.options.get('actions')))
 
-        self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=(4, 4), stride=(2, 2))
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1))
-        self.flatten1 = nn.Flatten()
-        self.fc1 = nn.Linear(3136, 512)
-        self.fc2 = nn.Linear(512, len(options.get('actions')))
 
     def forward(self, x):
-        x = torch.nn.functional.relu(self.conv1(x))
-        x = torch.nn.functional.relu(self.conv2(x))
-        x = torch.nn.functional.relu(self.conv3(x))
-        x = self.flatten1(x)
         x = torch.nn.functional.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = torch.nn.functional.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
-
 
 class FunctionApprox:
 
@@ -142,8 +135,6 @@ class FunctionApprox:
         if self.options.get('save_weights', default=False):
             weights_file = self.get_weights_file()
             if weights_file is not None:
-                if not weights_file.parent.exists():
-                    weights_file.parent.mkdir(parents=True, exist_ok=True)
                 torch.save(self.q_hat.state_dict(), weights_file)
 
     def load_weights(self):
@@ -204,17 +195,8 @@ class FunctionApprox:
             print(network)
 
             return network
-
         except Exception as e:
             print(f"failed to create model : {e}")
-
-    def transpose_states(self, states):
-        # states is a 4D array (N, X,Y,Z) with
-        # N = number of states,
-        # X = state and history, for CNN we need to transpose it to (N, Y,Z,X)
-        # and also add another level.
-        # Not needed in pytorch
-        return np.transpose(np.array(states), (0, 2, 3, 1))
 
     def get_all_action_values(self, states):
         return self.q_hat(torch.Tensor(states))
@@ -224,8 +206,7 @@ class FunctionApprox:
         return torch.max(predictions, axis=1).values
 
     def best_action_for(self, state):
-        state = torch.Tensor(np.array([state]))
-        prediction = self.q_hat(state)
+        prediction = self.q_hat(torch.Tensor(state))
         return torch.argmax(prediction).item()
 
     def process_batch(self, states, actions, rewards, next_states, terminal):
@@ -352,39 +333,6 @@ class AsyncQLearnerWorker(mp.Process):
 
         return loss
 
-    def reformat_observation(self, obs, previous_obs=None):
-        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        if previous_obs is not None:
-            np.maximum(obs, previous_obs, out=obs)
-        # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
-        return resized_obs / 256
-
-    def take_step(self, env, action, skip=3):
-        previous_obs = None
-        life_lost = False
-        obs, reward, terminated, truncated, info = env.step(action)
-        if 'lives' in info:
-            if info['lives'] < self.num_lives:
-                self.num_lives = info['lives']
-                life_lost = True
-        skippy = skip
-        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
-            skippy -= 1
-            previous_obs = obs
-            obs, reward, terminated, truncated, info = env.step(action)
-            if 'lives' in info:
-                if info['lives'] < self.num_lives:
-                    self.num_lives = info['lives']
-                    life_lost = True
-        # # Try adjusting the reward to penalise losing a life / or the game.
-        # if terminated:
-        #     reward = -10
-        # elif life_lost:
-        #     reward = -1
-
-        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
-
     def run(self):
         self.log = Logger(self.options.get('log_level', Logger.INFO), f"Worker {self.pid}")
         self.log.info(f"run started")
@@ -406,13 +354,14 @@ class AsyncQLearnerWorker(mp.Process):
         steps = 0
         steps_since_async_update = 0
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale")
-
+        register_gym_mods()
+        env = gym.make(self.options.get('env_name'))
+        state = None
+        terminated = True
         action = -1
         total_undiscounted_reward = 0
         experiences = []
         losses = []
-        terminated = True   # default to true to get initial reset call
 
         while True:
             if self.worker_throttle is not None:
@@ -430,37 +379,22 @@ class AsyncQLearnerWorker(mp.Process):
                 experiences = []
 
             if terminated:
-                obs, info = env.reset()
-
-                # State includes previous 3 frames.
-                state = [DataWithHistory.empty_state() for i in range(3)]
-                state.append(self.reformat_observation(obs))
+                state, info = env.reset()
 
                 action = self.policy.select_action(state)
-
-                if 'lives' in info:
-                    # initialise the starting number of lives
-                    self.num_lives = info['lives']
 
                 total_undiscounted_reward = 0
                 terminated = False
 
             else:
-                # take a step and get the next action from the policy.
-
                 # Take action A, observe R, S'
-                obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+                next_state, reward, terminated, truncated, info = env.step(action)
                 terminated = terminated or truncated    # treat truncated as terminated
-
-                # take the last 3 frames from state as the history for next_state
-                next_state = state[1:]
-                next_state.append(obs)  # And add the latest obs
 
                 # Choose A' from S' using policy derived from q_func
                 next_action = self.policy.select_action(next_state)
 
-                experiences.append((np.array(state), action, reward, np.array(next_state),
-                                            terminated or life_lost))
+                experiences.append((state, action, reward, next_state, terminated))
 
                 steps += 1
                 steps_since_async_update += 1
@@ -583,40 +517,6 @@ class AsyncStatsCollector(mp.Process):
         plt.savefig(self.work_dir / plot_filename)
         plt.close('all')    # matplotlib holds onto all the figures if we don't close them.
 
-    def reformat_observation(self, obs, previous_obs=None):
-        # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
-        if previous_obs is not None:
-            np.maximum(obs, previous_obs, out=obs)
-        # reduce merged greyscalegreyscale from 210,160 down to 84,84
-        resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
-        return resized_obs
-        # return resized_obs / 256
-
-    def take_step(self, env, action, skip=3):
-        previous_obs = None
-        life_lost = False
-        obs, reward, terminated, truncated, info = env.step(action)
-        if 'lives' in info:
-            if info['lives'] < self.num_lives:
-                self.num_lives = info['lives']
-                life_lost = True
-        skippy = skip
-        while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
-            skippy -= 1
-            previous_obs = obs
-            obs, reward, terminated, truncated, info = env.step(action)
-            if 'lives' in info:
-                if info['lives'] < self.num_lives:
-                    self.num_lives = info['lives']
-                    life_lost = True
-        # # Try adjusting the reward to penalise losing a life / or the game.
-        # if terminated:
-        #     reward = -10
-        # elif life_lost:
-        #     reward = -1
-
-        return self.reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost
-
     def play(self, env, episode_count):
         """ play a single episode using a greedy policy
 
@@ -628,29 +528,16 @@ class AsyncStatsCollector(mp.Process):
 
         total_reward = 0
 
-        obs, info = env.reset()
-
-        # State includes previous 3 frames.
-        state = [DataWithHistory.empty_state() for i in range(3)]
-        state.append(self.reformat_observation(obs))
-
-        if 'lives' in info:
-            # initialise the starting number of lives
-            self.num_lives = info['lives']
+        state, info = env.reset()
 
         terminated = False
         steps = 0
         last_action = -1
         repeated_action_count = 0
         action_frequency = {a: 0 for a in self.options.get('actions')}
-        life_lost = True
 
         while not terminated:
-            if life_lost:
-                # assume game starts with action 1 - Fire.
-                action = 1
-            else:
-                action = self.policy.select_action(state)
+            action = self.policy.select_action(state)
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -661,19 +548,13 @@ class AsyncStatsCollector(mp.Process):
                 repeated_action_count = 0
 
             action_frequency[action] += 1
-            last_obs = obs
 
-            obs, reward, terminated, truncated, info, life_lost = self.take_step(env, action)
+            state, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
-
             terminated = terminated or truncated    # treat truncated as terminated
 
-            # remove the oldest frame from the state
-            state.pop(0)
-            state.append(obs)  # And add the latest obs
-
             steps += 1
-            if steps >= 10000:
+            if steps >= 100000:
                 print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                 break
 
@@ -728,7 +609,8 @@ class AsyncStatsCollector(mp.Process):
         print(f"stats collector {self.pid}: Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale")
+        register_gym_mods()
+        env = gym.make(self.options.get('env_name'))
 
         while True:
 
@@ -751,13 +633,6 @@ class AsyncQLearningController:
         self.q_func.load_weights()
         self.workers = []
         self.stats_collector = None
-        self.delta_fraction = self.options.get('delta_fraction', 1.0)
-        self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
-        # location for files.
-        self.work_dir = Path(self.work_dir)
-        if not self.work_dir.exists():
-            self.work_dir.mkdir(parents=True, exist_ok=True)
-        self.log_file = self.create_controller_log()
         self.log = Logger(self.options.get('log_level', Logger.INFO), "Controller")
 
     def message_all_workers(self, msg_code, content):
@@ -779,30 +654,6 @@ class AsyncQLearningController:
             stats_queue.put(msg)
         except Exception as e:
             self.log.error(f"stats_queue put failed in controller", e)
-
-    def create_controller_log(self):
-        time_stamp = time.strftime("%Y%m%d-%H%M%S")
-        log_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
-        with open(log_file, 'a') as file:
-            file.write(f"episode, total_steps, reward, pid, value_net, target_net, epsilon\n")
-        return log_file
-
-    def log_episode_detail(self, episode_detail, total_steps, episode):
-        if self.options.get('log_level', 2) < 2:
-            print(f"Total steps {total_steps} : Episode {episode} took {episode_detail['steps']} steps"
-                  f" : reward = {episode_detail['total_reward']} : pid = {episode_detail['worker']}"
-                  f" : value_net = {episode_detail['value_network_checksum']:0.4f}"
-                  f" : target_net = {episode_detail['target_network_checksum']:0.4f}"
-                  f" : epsilon = {episode_detail['epsilon']:0.4f}")
-
-        with open(self.log_file, 'a') as file:
-            file.write(f"{episode},{total_steps}"
-                       f",{episode_detail['total_reward']}"
-                       f",{episode_detail['worker']}"
-                       f",{episode_detail['value_network_checksum']}"
-                       f",{episode_detail['target_network_checksum']}"
-                       f",{episode_detail['epsilon']}"
-                       f"\n")
 
     def train(self):
         print(f"{os.getppid()}: Setting up workers to run asynch q-learning")
@@ -830,6 +681,8 @@ class AsyncQLearningController:
         total_steps = 0
         episode_count = 0
         target_sync_counter = self.options.get('target_net_sync_steps', 1)
+        best_reward = None
+        best_episode = 0
         grad_updates = 0
         grads_update_errors = 0
 
@@ -867,7 +720,16 @@ class AsyncQLearningController:
                 self.log.trace(f"about to read from info queue")
                 info = info_queue.get(False)
                 episode_count += 1
-                self.log_episode_detail(info, total_steps, episode_count)
+                if best_reward is None or  best_reward < info['total_reward']:
+                    best_reward = info['total_reward']
+                    best_episode = episode_count
+                self.log.debug(f"Total steps {total_steps} : Episode {episode_count} took {info['steps']} steps"
+                              f" : reward = {info['total_reward']} : pid = {info['worker']}"
+                              f" : value_net = {info['value_network_checksum']:0.4f}"
+                              f" : target_net = {info['target_network_checksum']:0.4f}"
+                              f" : avg_loss = {info['avg_loss']:0.4f}"
+                              f" : epsilon = {info['epsilon']:0.4f}"
+                              f" : best_reward (episode) = {best_reward} ({best_episode})")
 
                 if episode_count % self.options.get('stats_every') == 0:
                     self.q_func.save_weights()
@@ -900,8 +762,16 @@ class AsyncQLearningController:
         except Exception as e:
             self.log.error("Failed to close the workers cleanly", e)
 
+def register_gym_mods():
+    gym.envs.registration.register(
+        id='MountainCarMyEasyVersion-v0',
+        entry_point='gym.envs.classic_control.mountain_car:MountainCarEnv',
+        max_episode_steps=250,      # MountainCar-v0 uses 200
+        reward_threshold=-110.0
+    )
 
 def create_and_run_agent(options):
+
     timer = Timer()
     timer.start("agent")
 
@@ -916,37 +786,39 @@ def create_and_run_agent(options):
     secs = int(elapsed - 60*mins)
     print(f"Total time taken by agent is {hours} hours {mins} mins {secs} secs")
 
-
 if __name__ == '__main__':
     print("Use spawn - should work on all op sys.")
     mp.set_start_method('spawn')
 
     options = {
-        'work_dir': 'async/breakout',
-        'env_name': "ALE/Breakout-v5",
-        'actions': [0, 1, 2, 3],
-        # 'work_dir': 'async/pong',
-        # 'env_name': "ALE/Pong-v5",
-        # 'actions': [0, 1, 2, 3, 4, 5],
+        # 'env_name': "Acrobot-v1",
+        # 'observation_shape': (6, ),
+        # 'actions': [0, 1, 2],
+        # 'env_name': "MountainCar-v0",
+        # 'env_name': "MountainCarMyEasyVersion-v0",
+        # 'observation_shape': (2, ),
+        # 'actions': [0, 1, 2],
+        'env_name': "CartPole-v1",
         # 'render': "human",
-        'actions': [0, 1, 2, 3],
-        'num_workers': 4,
-        'episodes': 8000,
+        'observation_shape': (4, ),
+        'actions': [0, 1],
+        'num_workers': 2,
+        'episodes': 2000,
         'async_update_freq': 5,
-        'target_net_sync_steps': 4000,
+        'target_net_sync_steps': 1000,
         'sync_beta': 1.0,
-        'adam_learning_rate': 0.0001,
-        'discount_factor': 0.99,
+        'adam_learning_rate': 0.001,
+        'discount_factor': 0.85,
         'load_weights': False,
         'save_weights': True,
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
         'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 1000,
+        'epsilon_decay_episodes': 900,
         'stats_every': 20,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
-        'worker_throttle': 0.005,       # 0.001 a bit low for 2 workers, and 0.005 or 0.01 for 8
+        'worker_throttle': 0.001,       # 0.001 looked ok for 4 workers, and 0.005 or 0.01 for 8
     }
 
     # for lr in [0.01, 0.001, 0.0001]:
@@ -957,6 +829,6 @@ if __name__ == '__main__':
     #         options['adam_learning_rate'] = lr
     #         create_and_run_agent(options)
 
-    options['plot_filename'] = f'async_rewards_breakout.png'
-    options['plot_title'] = f"Asynch Q-Learning Breakout 8 workers"
+    options['plot_filename'] = f'async_rewards_w_2_eps_decay_900.png'
+    options['plot_title'] = f"Asynch Q-Learning 2 workers, eps_decay=900"
     create_and_run_agent(options)
