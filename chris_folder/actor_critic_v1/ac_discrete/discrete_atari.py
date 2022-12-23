@@ -22,17 +22,17 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
     # Create Environment and get environment attributes
         # Initialise a new environment
-    env = gym.make("ALE/Breakout-v5", frameskip=1)
-    action_space = [i for i in range(env.action_space.n)]
+    env = gym.make("BreakoutNoFrameskip-v4", frameskip=1)
 
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
+    action_space = [i for i in range(env.action_space.n)]
     prev_state, info = env.reset()
-    print(prev_state.shape)
+
 
     state_dims = wrapped_env.observation_space.shape
     state_dims = state_dims + (1,)
-    print(state_dims)
+
     # Initialise actor and citic + corresponding networks
     actor = ConvActor()
     actor.create_network(state_dims, num_actions, actor_lr)
@@ -48,8 +48,10 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         # Initialise variables to track episode progress and performance
         steps = 0
         episode_reward = 0
+        actions = []
 
         prev_state, info = wrapped_env.reset()
+        prev_lives = info['lives']
         
         terminal = False
         truncated = False
@@ -59,22 +61,36 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             
             # Take action using Actor
             action = actor.predict(prev_state, action_space)
+            actions.append(action)
+
+            # # Force agent to fire if no steps taken
+            if steps > 20:
+                if 1 not in actions:
+                    action = 1
+
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
+            next_lives = info['lives']
 
             # Value current and next state with critic (v(St))
             prev_state_value = critic.predict(prev_state)
             next_state_value = critic.predict(next_state)
+
+            # send terminal flag if life lost without terminating episode
+            if next_lives < prev_lives and not terminal:
+                td_target = reward + 0 * gamma * next_state_value
             
-            # Get the td update target value (Week 3 of content)
-            # Use 1 - terminal since no future value for terminal states
-            td_target = reward + (1-terminal) * gamma * next_state_value
+            else:
+                # Get the td update target value (Week 3 of content)
+                # Use 1 - terminal since no future value for terminal states
+                td_target = reward + (1-terminal) * gamma * next_state_value
 
             # Calc extra reward for action at state vs mean reward for action in
             # that state which is the same as a full TD update to existing value
             # See lecture material Week 3
 
             adv_function_approx = td_target - prev_state_value
-
+            print(action)
+            print(adv_function_approx)
 
             # Update network parameters 
 
@@ -88,6 +104,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
             # Increment steps and set prev_state = next_state
             prev_state = copy.deepcopy(next_state)
+            prev_lives = copy.deepcopy(next_lives)
             episode_reward += reward
             steps += 1
             
@@ -123,7 +140,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
 if __name__ == "__main__":
 
-    main(gamma=0.99, actor_lr=0.001, critic_lr=0.001, num_actions=4,
+    main(gamma=0.9, actor_lr=0.0001, critic_lr=0.0001, num_actions=4,
          num_episodes=1000)
 
 

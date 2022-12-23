@@ -3,7 +3,7 @@ import random
 from keras.models import Sequential
 from keras.layers import Dense, Flatten, Conv2D
 from keras.optimizers import Adam
-from keras.initializers import GlorotNormal
+from keras.initializers import GlorotNormal, RandomUniform
 import tensorflow_probability as tfp
 import keras.backend as backend
 
@@ -115,7 +115,6 @@ class Actor:
         # calculate deltheta with Advantage (A(st, at)) according to equation in
         # https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f
         deltheta_advantage =  adv_function * deltheta + softmax_probs
-        self.adv_function = adv_function
         
         # Train on batch takes (x, y)
         self.network.train_on_batch(state, deltheta_advantage)
@@ -134,10 +133,11 @@ class Actor:
         """
 
 
-        clipped_vals = backend.clip(y_pred, 1e-10, 1-1e-10) # Clip before taking log of probs 
+        clipped_vals = backend.clip(y_pred, 1e-7, 1-1e-7) # Clip before taking log of probs 
         # get log of probabilities and multiply by delta with advantage
         log_likelihood =  backend.log(clipped_vals) * y_true 
-        actor_loss = backend.sum(-log_likelihood)
+        entropy = backend.sum(clipped_vals * backend.log(clipped_vals))
+        actor_loss = backend.sum(-log_likelihood) + entropy
         
         return actor_loss
 
@@ -252,7 +252,7 @@ class ConvActor(Actor):
         None
         """
 
-        initialiser = GlorotNormal()
+        initialiser = RandomUniform(minval=0, maxval=0.02)
         model = Sequential()
         model.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
         model.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
@@ -262,7 +262,7 @@ class ConvActor(Actor):
         model.add(Dense(num_actions, activation="softmax", kernel_initializer=initialiser))
 
         optimiser = Adam(learning_rate=learning_rate)
-        model.compile(loss="categorical_crossentropy", optimizer=optimiser)
+        model.compile(loss=self.actor_custom_loss, optimizer=optimiser)
         self.network = model
 
         return None
@@ -286,7 +286,7 @@ class ConvCritic(Critic):
     def create_network(self, state_dims: tuple=(4,),
         learning_rate: float=0.001) -> None:
 
-        initialiser = GlorotNormal()
+        initialiser = RandomUniform(minval=0, maxval=0.02)
         model = Sequential()
         model.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
         model.add(Conv2D(64, kernel_size=(4, 4), strides=(2, 2), activation='relu'))
