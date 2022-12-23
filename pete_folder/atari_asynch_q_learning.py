@@ -20,8 +20,6 @@ import torch.optim
 
 import numpy as np
 
-import traceback
-
 
 class EGreedyPolicy:
     """ Assumes every state has the same possible actions.
@@ -85,18 +83,26 @@ class QNetwork(nn.Module):
     """
     def __init__(self, options):
         super().__init__()
+        #   This is from the nature paper
+        # self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
+        # self.conv2 = nn.Conv2d(32, 64, kernel_size=(4, 4), stride=(2, 2))
+        # self.conv3 = nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1))
+        # self.flatten1 = nn.Flatten()
+        # self.fc1 = nn.Linear(3136, 512)
+        # self.fc2 = nn.Linear(512, len(options.get('actions')))
 
-        self.conv1 = nn.Conv2d(4, 32, kernel_size=(8, 8), stride=(4, 4))
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=(4, 4), stride=(2, 2))
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1))
+        # This is from the async paper
+        self.conv1 = nn.Conv2d(4, 16, kernel_size=(8, 8), stride=(4, 4))
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=(4, 4), stride=(2, 2))
         self.flatten1 = nn.Flatten()
-        self.fc1 = nn.Linear(3136, 512)
-        self.fc2 = nn.Linear(512, len(options.get('actions')))
+        self.fc1 = nn.Linear(2592, 256)
+        self.fc2 = nn.Linear(256, len(options.get('actions')))
 
     def forward(self, x):
         x = torch.nn.functional.relu(self.conv1(x))
         x = torch.nn.functional.relu(self.conv2(x))
-        x = torch.nn.functional.relu(self.conv3(x))
+        # third layer not used in the async paper
+        # x = torch.nn.functional.relu(self.conv3(x))
         x = self.flatten1(x)
         x = torch.nn.functional.relu(self.fc1(x))
         x = self.fc2(x)
@@ -150,6 +156,7 @@ class FunctionApprox:
         if self.options.get('load_weights', default=False):
             weights_file = self.get_weights_file()
             if weights_file is not None and weights_file.exists():
+                self.log.info(f"loading weights from {weights_file}")
                 state_dict = torch.load(weights_file)
                 self.set_value_network_weights(state_dict)
                 self.set_target_network_weights(state_dict)
@@ -264,11 +271,11 @@ class FunctionApprox:
 
 class AsyncQLearnerWorker(mp.Process):
 
-    def __init__(self, global_value_network, global_target_network, messages, grad_update_queue, info_queue,
+    def __init__(self, shared_value_network, shared_target_network, messages, grad_update_queue, info_queue,
                  options=None):
         super().__init__()
-        self.global_value_network = global_value_network
-        self.global_target_network = global_target_network
+        self.shared_value_network = shared_value_network
+        self.shared_target_network = shared_target_network
         # messages is a mp.Queue used to receive messages from the controller
         self.messages = messages
         self.grad_update_queue = grad_update_queue
@@ -277,7 +284,8 @@ class AsyncQLearnerWorker(mp.Process):
 
         # set these up at the start of run. Saves them being pickled/reloaded when the new process starts.
         self.tasks = None
-        self.q_func = None
+        self.q_func_shared = None
+        self.q_func_local = None
         self.policy = None
         self.initialised = False
         self.num_lives = 0
@@ -314,16 +322,6 @@ class AsyncQLearnerWorker(mp.Process):
         if self.tasks['stop']:
             return
 
-    def get_global_value_network_weights(self):
-        """ Controller couldn't keep up with the updates being sent, so add a wait for the network update
-        to give the controller chance.
-        """
-        self.log.trace(f"Get weights from the global value network.")
-        self.value_network_updated = False
-        while not self.value_network_updated:
-            self.process_controller_messages(timeout=0.01)
-        self.log.trace(f"Global network weights updated.")
-
     def async_grad_update(self, experiences):
         """ Process the batch of experiences, calling q_func to apply them.
 
@@ -342,13 +340,17 @@ class AsyncQLearnerWorker(mp.Process):
             next_states.append(ns)
             terminal.append(t)
 
-        loss = self.q_func.process_batch(states, actions, rewards, next_states, terminal)
+        loss = self.q_func_shared.process_batch(states, actions, rewards, next_states, terminal)
 
         try:
             self.log.trace(f"Sending number of steps to controller {len(experiences)}")
             self.grad_update_queue.put(len(experiences))
         except Exception as e:
             self.log.error(f"failed to send steps to grad_update_queue", e)
+
+        # Update local q_func with latest shared weights so that the policy uses the latest
+        shared_weights = self.q_func_shared.get_value_network_weights().copy()
+        self.q_func_local.set_value_network_weights(shared_weights)
 
         return loss
 
@@ -397,9 +399,12 @@ class AsyncQLearnerWorker(mp.Process):
             'stop': None
         }
 
-        self.q_func = FunctionApprox(self.options, self.global_value_network, self.global_target_network)
-
-        self.policy = EGreedyPolicy(self.q_func, self.options)
+        self.q_func_shared = FunctionApprox(self.options, self.shared_value_network, self.shared_target_network)
+        # Use a local copy of the value network for the policy
+        self.q_func_local = FunctionApprox(self.options)
+        shared_weights = self.q_func_shared.get_value_network_weights().copy()
+        self.q_func_local.set_value_network_weights(shared_weights)
+        self.policy = EGreedyPolicy(self.q_func_local, self.options)
         self.log.info(f"Created policy epsilon={self.policy.epsilon}, "
                       f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
@@ -458,7 +463,7 @@ class AsyncQLearnerWorker(mp.Process):
 
                 # Choose A' from S' using policy derived from q_func
                 next_action = self.policy.select_action(next_state)
-
+                # TODO : maybe skip adding every state and just add every nth?
                 experiences.append((np.array(state), action, reward, np.array(next_state),
                                             terminated or life_lost))
 
@@ -471,14 +476,13 @@ class AsyncQLearnerWorker(mp.Process):
                     losses.append(loss)
                     try:
                         # print(f"send info message from worker")
-                        # print(f"worker about to send weights deltas to controller")
                         self.info_queue.put({
                             'total_reward': total_undiscounted_reward,
                             'steps': steps,
                             'worker': self.pid,
                             'epsilon': self.policy.epsilon,
-                            'value_network_checksum': self.q_func.get_value_network_checksum(),
-                            'target_network_checksum': self.q_func.get_target_network_checksum(),
+                            'value_network_checksum': self.q_func_shared.get_value_network_checksum(),
+                            'target_network_checksum': self.q_func_shared.get_target_network_checksum(),
                             'avg_loss': sum(losses) / len(losses)
                         })
                     except Exception as e:
@@ -566,16 +570,32 @@ class AsyncStatsCollector(mp.Process):
         # Plot a graph showing reward against episode, and epsilon
         x = [stat[0] for stat in self.stats]
         rwd = [stat[1] for stat in self.stats]
+        plots = []
 
         fig, ax = plt.subplots()
 
-        color = 'tab:blue'
         ax.set_title(self.options.get('plot_title', 'Asynch Q-Learning'))
         ax.set_xlabel('episodes')
-        ax.set_ylabel('reward', color=color)
+        ax.set_ylabel('reward')
+        ax.grid(True)
         # ax1.set_ylim(0, 50)
-        ax.plot(x, rwd, color=color)
-        ax.tick_params(axis='y', labelcolor=color)
+        p, = ax.plot(x, rwd, label='rewards')
+        plots.append(p)
+
+        x = []
+        avg_rwd = []
+        last_few = []
+        for i in range(len(self.stats)):
+            stat = self.stats[i]
+            x.append(stat[0])
+            if len(last_few) >= 10:
+                last_few.pop(0)
+            last_few.append(stat[1])
+            avg_rwd.append(sum(last_few)/len(last_few))
+        p, = ax.plot(x, avg_rwd, label='moving average')
+        plots.append(p)
+
+        ax.legend(handles=plots)
 
         fig.tight_layout()
 
@@ -685,11 +705,9 @@ class AsyncStatsCollector(mp.Process):
 
         self.log.info(f"Play : weights from episode {episode_count}"
                       f" : Reward = {total_reward}"
-                      f" : epsilon: {self.policy.epsilon:0.4f}"
                       f" : value_net: {self.q_func.get_value_network_checksum():0.4f}"
                       f" : Action freq: {action_frequency}"
-                      f" : Best episode = {self.best_episode} : Best reward = {self.best_reward}"
-                      f" : Avg reward (last {len(self.last_n_scores)}) = {mean(self.last_n_scores)}")
+                      f" : Avg reward (last {len(self.last_n_scores)}) = {mean(self.last_n_scores):0.2f}")
 
         with open(self.info_file, 'a') as file:
             file.write(f'{episode_count}, {total_reward}, {self.policy.epsilon}, "{action_frequency}"\n')
@@ -701,7 +719,7 @@ class AsyncStatsCollector(mp.Process):
         self.log.info(f"started run")
 
         self.options.default('stats_epsilon', 0.05)
-        self.last_n_scores = deque(maxlen=5)
+        self.last_n_scores = deque(maxlen=10)
         self.stats = []
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
         # location for files.
@@ -744,11 +762,11 @@ class AsyncQLearningController:
     def __init__(self, options=None):
         self.options = Options(options)
         self.q_func = FunctionApprox(self.options)
-        self.global_value_network = self.q_func.q_hat
-        self.global_target_network = self.q_func.q_hat_target
-        self.global_value_network.share_memory()
-        self.global_target_network.share_memory()
         self.q_func.load_weights()
+        self.shared_value_network = self.q_func.q_hat
+        self.shared_target_network = self.q_func.q_hat_target
+        self.shared_value_network.share_memory()
+        self.shared_target_network.share_memory()
         self.workers = []
         self.stats_collector = None
         self.delta_fraction = self.options.get('delta_fraction', 1.0)
@@ -757,7 +775,7 @@ class AsyncQLearningController:
         self.work_dir = Path(self.work_dir)
         if not self.work_dir.exists():
             self.work_dir.mkdir(parents=True, exist_ok=True)
-        self.log_file = self.create_controller_log()
+        self.details_file = self.create_details_file()
         self.log = Logger(self.options.get('log_level', Logger.INFO), "Controller")
 
     def message_all_workers(self, msg_code, content):
@@ -780,42 +798,49 @@ class AsyncQLearningController:
         except Exception as e:
             self.log.error(f"stats_queue put failed in controller", e)
 
-    def create_controller_log(self):
+    def create_details_file(self):
         time_stamp = time.strftime("%Y%m%d-%H%M%S")
-        log_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
-        with open(log_file, 'a') as file:
-            file.write(f"episode, total_steps, reward, pid, value_net, target_net, epsilon\n")
-        return log_file
+        details_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
+        with open(details_file, 'a') as file:
+            file.write(f"date-time,episode,total_steps,reward,pid,steps,avg_loss,value_net,target_net,epsilon\n")
+        return details_file
 
     def log_episode_detail(self, episode_detail, total_steps, episode):
-        if self.options.get('log_level', 2) < 2:
-            print(f"Total steps {total_steps} : Episode {episode} took {episode_detail['steps']} steps"
-                  f" : reward = {episode_detail['total_reward']} : pid = {episode_detail['worker']}"
-                  f" : value_net = {episode_detail['value_network_checksum']:0.4f}"
-                  f" : target_net = {episode_detail['target_network_checksum']:0.4f}"
-                  f" : epsilon = {episode_detail['epsilon']:0.4f}")
+        self.log.debug(f"Total steps {total_steps} : Episode {episode} took {episode_detail['steps']} steps"
+                       f" : reward = {episode_detail['total_reward']} : pid = {episode_detail['worker']}"
+                       f" : value_net = {episode_detail['value_network_checksum']:0.4f}"
+                       f" : target_net = {episode_detail['target_network_checksum']:0.4f}"
+                       f" : epsilon = {episode_detail['epsilon']:0.4f}")
 
-        with open(self.log_file, 'a') as file:
-            file.write(f"{episode},{total_steps}"
+        with open(self.details_file, 'a') as file:
+            date_time = time.strftime('%Y/%m/%d-%H:%M:%S')
+            file.write(f"{date_time},{episode},{total_steps}"
                        f",{episode_detail['total_reward']}"
                        f",{episode_detail['worker']}"
+                       f",{episode_detail['steps']}"
+                       f",{episode_detail['avg_loss']:0.6f}"
                        f",{episode_detail['value_network_checksum']}"
                        f",{episode_detail['target_network_checksum']}"
                        f",{episode_detail['epsilon']}"
                        f"\n")
 
     def train(self):
-        print(f"{os.getppid()}: Setting up workers to run asynch q-learning")
+        self.log.info(f"train : Setting up workers to run asynch q-learning")
 
         grad_update_queue = mp.Queue()
         info_queue = mp.Queue()
 
         # set up the workers
 
-        for _ in range(self.options.get('num_workers', 1)):
+        self.log.info(f"starting {self.options.get('num_workers', 1)} workers")
+        worker_eps = [0.05, 0.5, 0.15, 0.1, 0.2, 0.15, 0.25, 0.1]
+        for i in range(self.options.get('num_workers', 1)):
+            epsilon = worker_eps[i % len(worker_eps)]
+            self.options.set('epsilon', epsilon)
+            self.options.set('epsilon_min', epsilon)
             worker_queue = mp.Queue()
-            worker = AsyncQLearnerWorker(self.global_value_network, self.global_target_network,
-                worker_queue, grad_update_queue, info_queue, self.options)
+            worker = AsyncQLearnerWorker(self.shared_value_network, self.shared_target_network,
+                                         worker_queue, grad_update_queue, info_queue, self.options)
             worker.daemon = True    # helps tidy up child processes if parent dies.
             worker.start()
             self.workers.append((worker, worker_queue))
@@ -828,12 +853,13 @@ class AsyncQLearningController:
         self.stats_collector = (stats_queue, worker)
 
         total_steps = 0
-        episode_count = 0
+        episode_count = self.options.get('start_episode_count', 0)
+        last_episode = episode_count + self.options.get('episodes', 1)
         target_sync_counter = self.options.get('target_net_sync_steps', 1)
         grad_updates = 0
         grads_update_errors = 0
 
-        while episode_count < self.options.get('episodes', 1):
+        while episode_count < last_episode:
 
             grad_update_messages = []
             try:
@@ -930,23 +956,23 @@ if __name__ == '__main__':
         # 'actions': [0, 1, 2, 3, 4, 5],
         # 'render': "human",
         'actions': [0, 1, 2, 3],
-        'num_workers': 4,
-        'episodes': 8000,
-        'async_update_freq': 5,
-        'target_net_sync_steps': 4000,
+        'num_workers': 8,
+        'episodes': 10000,
+        'async_update_freq': 16,
+        'target_net_sync_steps': 40000,
         'sync_beta': 1.0,
-        'adam_learning_rate': 0.0001,
+        'adam_learning_rate': 0.00025,
         'discount_factor': 0.99,
-        'load_weights': False,
+        'load_weights': True,
         'save_weights': True,
         'stats_epsilon': 0.01,
-        'epsilon': 1.0,
-        'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 1000,
-        'stats_every': 20,  # how frequently to collect stats
+        # 'epsilon': 0.1,
+        # 'epsilon_min': 0.1,
+        # 'epsilon_decay_episodes': 500,
+        'stats_every': 25,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
-        'worker_throttle': 0.005,       # 0.001 a bit low for 2 workers, and 0.005 or 0.01 for 8
+        'worker_throttle': 0.001,       # 0.001 seemed OK for 8 workers
     }
 
     # for lr in [0.01, 0.001, 0.0001]:
@@ -958,5 +984,8 @@ if __name__ == '__main__':
     #         create_and_run_agent(options)
 
     options['plot_filename'] = f'async_rewards_breakout.png'
-    options['plot_title'] = f"Asynch Q-Learning Breakout 8 workers"
+    options['plot_title'] = f"Asynch Q-Learning Breakout {options['num_workers']} workers"
+    options['start_episode_count'] = 10000
+    # options['epsilon'] = 0.1
+
     create_and_run_agent(options)
