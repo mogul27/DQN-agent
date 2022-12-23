@@ -5,6 +5,8 @@ import time
 import pickle
 import os
 
+import traceback
+
 
 class ReplayMemory:
     """ Maintain a memory of states and rewards from previous experience.
@@ -213,7 +215,8 @@ class Logger:
         self.name = name
 
     def print(self, level, message):
-        print(f"{level:6}: {self.name} : {message}")
+        date_time = time.strftime("%Y/%m/%d %H:%M:%S")
+        print(f"{date_time} {level:6}: {self.name} : {message}")
 
     def trace(self, message):
         if self.log_level <= Logger.TRACE:

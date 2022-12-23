@@ -666,19 +666,20 @@ def plot_reward_epsilon(stats, options, file_only=True):
 def main():
     # run(render='human')
     options = {
+        'work_dir': 'dqn/breakout',
         'env_name': "ALE/Breakout-v5",
         # 'render': "human",
         # 'observation_shape': (84, 84, 4),
         'actions': [0, 1, 2, 3],
         'start_episode_num': 1,
-        'episodes': 100,
+        'episodes': 50,
         'mini_batch_size': 32,
         'actions_before_replay': 4,
         'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
         'target_sync_counter': 1000,
         # 'sync_beta': 1.0,
-        'load_weights': True,
+        'load_weights': False,
         'save_weights': True,
         'replay_init_size': 50000,
         'replay_max_size': 250000,

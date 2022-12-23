@@ -19,7 +19,6 @@ import torch.optim
 
 import numpy as np
 
-import traceback
 
 
 class EGreedyPolicy:

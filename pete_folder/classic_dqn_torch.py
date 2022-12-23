@@ -78,9 +78,9 @@ class QNetwork(nn.Module):
     def __init__(self, options):
         super().__init__()
         self.options = Options(options)
-        self.fc1 = nn.Linear(self.options.get('observation_shape')[0], 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, len(self.options.get('actions')))
+        self.fc1 = nn.Linear(self.options.get('observation_shape')[0], 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, len(self.options.get('actions')))
 
     def forward(self, x):
         x = torch.nn.functional.relu(self.fc1(x))
@@ -538,7 +538,7 @@ def run(options):
         # play the game with greedy policy to get some stats of where we are.
         # Get average for n episodes:
         play_rewards = []
-        while len(play_rewards) < 5:
+        while len(play_rewards) < 1:
             play_reward, action_frequency = agent.play(env)
             play_rewards.append(play_reward)
 
@@ -559,6 +559,7 @@ def run(options):
     # for (episode, reward) in stats:
     #     print(f"{episode:5.0f}   |  {reward:7.2f}")
     plot_reward_epsilon(stats, options)
+    plot_reward_moving_average(stats, options)
 
 
 def plot_reward_epsilon(stats, options):
@@ -576,6 +577,44 @@ def plot_reward_epsilon(stats, options):
     ax1.set_ylim(0, 500)
     ax1.plot(x, rwd, color=color)
     ax1.tick_params(axis='y', labelcolor=color)
+    ax1.grid(True)
+
+    # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    #
+    # color = 'tab:green'
+    # ax2.set_ylabel('epsilon', color=color)  # we already handled the x-label with ax1
+    # ax2.plot(x, eps, color=color)
+    # ax2.set_ylim(0, 1.0)
+    # ax2.tick_params(axis='y', labelcolor=color)
+
+    fig.tight_layout()
+
+    plt.show()
+
+
+def plot_reward_moving_average(stats, options):
+    # Plot a graph showing reward against episode, and epsilon
+    x = []
+    rwd = []
+    last_few = []
+    for i in range(len(stats)):
+        stat = stats[i]
+        x.append(stat[0])
+        if len(last_few) >= 10:
+            last_few.pop(0)
+        last_few.append(stat[1])
+        rwd.append(sum(last_few)/len(last_few))
+
+    fig, ax1 = plt.subplots()
+
+    color = 'tab:blue'
+    ax1.set_title(options.get('plot_title', 'DQN rewards. (simple moving average, last 10 points)'))
+    ax1.set_xlabel('episodes')
+    ax1.set_ylabel('reward', color=color)
+    ax1.set_ylim(0, 500)
+    ax1.plot(x, rwd, color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.grid(True)
 
     # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
     #
@@ -597,22 +636,22 @@ def main():
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'episodes': 500,
-        'mini_batch_size': 32,
+        'episodes': 10000,
+        'mini_batch_size': 256,
         'actions_before_replay': 1,
         'adam_learning_rate': 0.001,
-        'discount_factor': 0.85,
+        'discount_factor': 0.99,
         'sync_weights_count': 400,
-        'sync_beta': 1.0,
+        'sync_beta': 0.1,
         'load_weights': False,
         'save_weights': False,
         'replay_init_size': 10000,
-        'replay_max_size': 250000,
+        'replay_max_size': 100000,
         'replay_load': False,
         'stats_epsilon': 0.01,
-        'epsilon': 0.75,
-        'epsilon_min': 0.25,
-        'epsilon_decay_episodes': 350,
+        'epsilon': 0.1,
+        'epsilon_min': 0.1,
+        'epsilon_decay_episodes': 1000,
         'stats_every': 10
     }
 
@@ -634,9 +673,9 @@ def main():
     # options['sync_weights_count'] = 1
     # options['sync_beta'] = 0.01
     # options['adam_learning_rate'] = 0.001
-    options['episodes'] = 15
+    # options['episodes'] = 15
     # options['save_weights'] = True
-    options['load_weights'] = True
+    # options['load_weights'] = True
     run(options)
     # # TODO run the 0.1 and 1.0
     # for lr in [0.00001, 0.0001, 0.001]:
