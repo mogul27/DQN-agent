@@ -100,7 +100,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             actor.save_network_weights()
     
     # After num_episodes of episodes have run
-    episode_axis = [i for i in range(num_episodes)]
+    episode_axis = [i for i in range(0, num_episodes, 50)]
     plt.plot(episode_axis, episode_reward_list)
     plt.xlabel("Episode")
     plt.xticks(episode_axis)
@@ -113,7 +113,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 if __name__ == "__main__":
 
     main(gamma=0.9, actor_lr=0.001, critic_lr=0.001, num_actions=2,
-         num_episodes=1000)
+         num_episodes=500)
 
 
 

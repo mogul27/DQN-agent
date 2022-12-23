@@ -5,7 +5,7 @@ from keras.layers import Dense, Flatten, Conv2D
 from keras.optimizers import Adam
 from keras.initializers import GlorotNormal
 import tensorflow_probability as tfp
-import keras.backend as K
+import keras.backend as backend
 
 class Actor:
     """
@@ -80,7 +80,6 @@ class Actor:
         
         state = np.expand_dims(state, axis=0)
         probs_output = self.network.predict_on_batch(state)[0]
-        print(probs_output)
 
         # actions
         action = np.random.choice(action_space, 1, p=probs_output)[0]
@@ -110,26 +109,16 @@ class Actor:
         # Create array and set action taken to 1 to one hot encode
         actual_action = np.zeros(num_actions)
         actual_action[action_taken] = 1
-        gradient = actual_action - softmax_probs
-        gradient_with_advantage =  adv_function * gradient + softmax_probs
+        # Calculate deltheta (gradient)
+        deltheta = actual_action - softmax_probs
+        
+        # calculate deltheta with Advantage (A(st, at)) according to equation in
+        # https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f
+        deltheta_advantage =  adv_function * deltheta + softmax_probs
         self.adv_function = adv_function
-        # print("Encoded:", actual_action)
-        # print("Probs:", softmax_probs)
-        # print("gradient", gradient)
-        # print("adv:", adv_function)
-        # print("gaw", gradient_with_advantage)
         
-
-        # state = np.expand_dims(state, axis=0)
-        # probs_output = self.network.predict_on_batch(state)[0]
-        # prob_dist = tfp.distributions.Categorical(probs=probs_output)
-        # log_probs = prob_dist.log_prob(action)
-        # actor_loss = -log_probs*adv_function*0.001  
-        
-        # self.network.train_on_batch(state, actor_loss)
-
-        print(actual_action.reshape(1, 2))
-        self.network.train_on_batch(state, gradient_with_advantage)
+        # Train on batch takes (x, y)
+        self.network.train_on_batch(state, deltheta_advantage)
 
         return None
 
@@ -144,21 +133,11 @@ class Actor:
         
         """
 
-        # state = np.expand_dims(state, axis=0)
-        # mu, var = self.network.predict_on_batch(state)
-        # # Make mu and var 1-D arrays
-        # mu, var = mu[0], var[0]
-        # std = np.sqrt(var) + 1e-5
-        # sampled_actions = np.random.normal(mu, std)
 
-        # actions = np.clip(actions, 1e-10, None)
-        # log_probs = -np.log(actions)
-
-        # actor_loss = log_probs*adv_function 
-
-        out = K.clip(y_pred, 1e-8, 1-1e-8) # set boundary
-        log_lik = y_true * K.log(out) # policy gradient
-        return K.sum(-log_lik * self.adv_function)
+        clipped_vals = backend.clip(y_pred, 1e-10, 1-1e-10) # Clip before taking log of probs 
+        # get log of probabilities and multiply by delta with advantage
+        log_likelihood =  backend.log(clipped_vals) * y_true 
+        actor_loss = backend.sum(-log_likelihood)
         
         return actor_loss
 
