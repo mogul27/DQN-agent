@@ -22,7 +22,8 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
     # Create Environment and get environment attributes
         # Initialise a new environment
-    env = gym.make("BreakoutNoFrameskip-v4", frameskip=1)
+    env = gym.make("BreakoutNoFrameskip-v4")
+    load_weights = True
 
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
@@ -34,10 +35,14 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
     state_dims = state_dims + (1,)
 
     # Initialise actor and citic + corresponding networks
-    actor = ConvActor()
+    actor = ConvActor(entropy_weight=0.05)
     actor.create_network(state_dims, num_actions, actor_lr)
     critic = ConvCritic()
     critic.create_network(state_dims, critic_lr)
+
+    if load_weights:
+        actor.load_network_weights(game_type='atari')
+        critic.load_network_weights(game_type='atari')
 
     # Initialise list to hold rewards across episodes
     episode_reward_list = []
@@ -48,7 +53,6 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         # Initialise variables to track episode progress and performance
         steps = 0
         episode_reward = 0
-        actions = []
 
         prev_state, info = wrapped_env.reset()
         prev_lives = info['lives']
@@ -56,18 +60,21 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         terminal = False
         truncated = False
 
+        # fire as first action 
+        next_action = 1
+
         while not terminal and not truncated:
             # Inner loop = 1 step from here
             
             # Take action using Actor
             action = actor.predict(prev_state, action_space)
-            actions.append(action)
 
-            # # Force agent to fire if no steps taken
-            if steps > 20:
-                if 1 not in actions:
-                    action = 1
+            # Force agent to fire if no steps taken or new life
+            if next_action:
+                action = 1
+                next_action = None
 
+            print(action)
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
             next_lives = info['lives']
 
@@ -78,6 +85,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             # send terminal flag if life lost without terminating episode
             if next_lives < prev_lives and not terminal:
                 td_target = reward + 0 * gamma * next_state_value
+                next_action = 1
             
             else:
                 # Get the td update target value (Week 3 of content)
@@ -89,8 +97,8 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             # See lecture material Week 3
 
             adv_function_approx = td_target - prev_state_value
-            print(action)
-            print(adv_function_approx)
+            #print(action)
+            #print(adv_function_approx)
 
             # Update network parameters 
 
@@ -140,8 +148,8 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
 if __name__ == "__main__":
 
-    main(gamma=0.9, actor_lr=0.0001, critic_lr=0.0001, num_actions=4,
-         num_episodes=1000)
+    main(gamma=0.99, actor_lr=0.0001, critic_lr=0.0001, num_actions=4,
+         num_episodes=10000)
 
 
 

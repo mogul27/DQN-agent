@@ -26,7 +26,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
     action_space = [i for i in range(env.action_space.n)]
 
     # Initialise actor and citic + corresponding networks
-    actor = Actor()
+    actor = Actor(entropy_weight=0.5)
     actor.create_network(state_dims, num_actions, actor_lr)
     critic = Critic()
     critic.create_network(state_dims, critic_lr)

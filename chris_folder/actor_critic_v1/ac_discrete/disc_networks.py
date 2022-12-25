@@ -14,8 +14,9 @@ class Actor:
     :ivar network: references the Actor's neural network
     """
 
-    def __init__(self) -> None:
+    def __init__(self, entropy_weight=0.5) -> None:
         self.network = None
+        self.entropy_weight = entropy_weight
 
     def create_network(self, state_dims: tuple=(4,),
                        num_actions: int=2,
@@ -82,7 +83,9 @@ class Actor:
         probs_output = self.network.predict_on_batch(state)[0]
 
         # actions
-        action = np.random.choice(action_space, 1, p=probs_output)[0]
+        #action = np.random.choice(action_space, 1, p=probs_output)[0]
+        action = np.argmax(probs_output)
+
 
         return action
 
@@ -105,6 +108,7 @@ class Actor:
         # Use delta and advantage as categorical crossentropy does the negative log part
         state = np.expand_dims(state, axis=0)
         softmax_probs = self.network.predict_on_batch(state)[0]
+        print(softmax_probs)
 
         # Create array and set action taken to 1 to one hot encode
         actual_action = np.zeros(num_actions)
@@ -137,7 +141,7 @@ class Actor:
         # get log of probabilities and multiply by delta with advantage
         log_likelihood =  backend.log(clipped_vals) * y_true 
         entropy = backend.sum(clipped_vals * backend.log(clipped_vals))
-        actor_loss = backend.sum(-log_likelihood) + entropy
+        actor_loss = backend.sum(-log_likelihood) + (self.entropy_weight * entropy)
         
         return actor_loss
 
@@ -235,8 +239,9 @@ class ConvActor(Actor):
     """Child class of Actor which uses te same methods but different
     functionality to be compatible with Atari game input
     """
-    def __init__(self) -> None:
+    def __init__(self, entropy_weight=0.5) -> None:
         super().__init__()
+        self.entropy_weight = entropy_weight
 
     def create_network(self, state_dims: tuple,
                        num_actions: int=2,
