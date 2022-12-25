@@ -88,12 +88,7 @@ class ACPolicy:
         action_probs, state_value = self.get_actions_and_state_value(state)
         action_dist = torch.distributions.Categorical(probs=action_probs)
 
-        if np.random.uniform() < self.epsilon:
-            action = self.random_action()
-        else:
-            # TODO : Should this be argmax or is sample better?
-            # action = torch.argmax(action_probs).item()
-            action = action_dist.sample().item()
+        action = action_dist.sample().item()
 
         action_logit = action_dist.logits[action]
         return action, action_logit, state_value
@@ -277,34 +272,35 @@ class AsynchActorCritic:
         # If it's not
         not_terminal = torch.IntTensor([1 if not t else 0 for t in terminal])
         discounted_returns = self.expected_returns(rewards)
-        actor_losses = []
-        critic_losses = []
-
-        for i, discounted_return in enumerate(discounted_returns):
-            advantage = discounted_return - state_values[i]
-            actor_losses.append(-action_logits[i] * advantage)
-
-            critic_losses.append(self.loss_fn(state_values[i], discounted_return))
+        # aa_actor_losses = []
+        # aa_critic_losses = []
+        #
+        # for i, discounted_return in enumerate(discounted_returns):
+        #     aa_advantage = discounted_return - state_values[i]
+        #     aa_actor_losses.append(-action_logits[i] * aa_advantage)
+        #
+        #     aa_critic_losses.append(self.loss_fn(state_values[i], discounted_return))
 
         # Zero the gradients for every batch!
         self.optimizer.zero_grad()
 
-        actor_loss = torch.stack(actor_losses).sum()
-        critic_loss = torch.stack(critic_losses).sum()
+        # aa_actor_loss = torch.stack(aa_actor_losses).sum()
+        # aa_critic_loss = torch.stack(aa_critic_losses).sum()
 
-        loss = actor_loss + critic_loss
+        # aa_loss = aa_actor_loss + aa_critic_loss
 
         # Compute the loss and its gradients.
         # state value for terminated state is zero
         # state_values = not_terminal * torch.stack(state_values)
-        # advantage = discounted_returns - state_values
-        # action_logits = torch.stack(action_logits)
-        # actor_loss = -torch.sum(action_logits * advantage)
-        # critic_loss = self.loss_fn(state_values, discounted_returns)
+        advantage = discounted_returns - torch.stack(state_values)
+        actor_losses = -torch.stack(action_logits) * advantage
+        actor_loss = actor_losses.sum()
+        critic_losses = [self.loss_fn(v, r) for v, r in zip(state_values, discounted_returns)]
+        critic_loss = torch.stack(critic_losses).sum()
         # # TODO : scale the losses?
         # # critic_loss_scale_factor = 0.5
-        # critic_loss_scale_factor = 1.0
-        # loss = actor_loss + critic_loss_scale_factor * critic_loss
+        # # critic_loss_scale_factor = 1.0
+        loss = actor_loss + critic_loss
         # if loss == loss == math.inf:
         #     self.log.warn(f"loss is inf : {loss}")
         # if loss == -math.inf:
@@ -325,7 +321,11 @@ class AsynchActorCritic:
             shared_param._grad =local_param.grad
 
         self.optimizer.step()
-        return loss.item(), actor_loss.item(), critic_loss.item()
+        loss_value = loss.item(), actor_loss.item(), critic_loss.item()
+        del loss
+        del actor_loss
+        del critic_loss
+        return loss_value
 
 
 class AsynchQLearnerWorker(mp.Process):
@@ -704,7 +704,7 @@ class AsynchStatsCollector(mp.Process):
         self.log = Logger(self.options.get('log_level', Logger.INFO), f'Stats {self.pid}')
         self.log.info(f"started run")
 
-        self.options.default('stats_epsilon', 0.05)
+
         self.last_n_scores = deque(maxlen=10)
         self.stats = []
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
@@ -729,6 +729,8 @@ class AsynchStatsCollector(mp.Process):
         actor_critic_network = ActorCriticNetwork(self.options)
         # use a policy with epsilon of 0.05 for playing to collect stats.
         self.policy = ACPolicy(actor_critic_network, self.options)
+        self.policy.epsilon = self.options.get('stats_epsilon', 0.01)
+        self.policy.min_epsilon = self.options.get('stats_epsilon', 0.01)
         print(f"stats collector {self.pid}: Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
@@ -940,7 +942,7 @@ class AsynchQLearningController:
 
         self.save_weights()
 
-        time.sleep(10)   # give them a chance to stop
+        time.sleep(6)   # give them a chance to stop
         try:
             # make sure they've all stopped OK
             for worker, _ in self.workers:
@@ -983,9 +985,9 @@ if __name__ == '__main__':
         # 'render': "human",
         'observation_shape': (4, ),
         'actions': [0, 1],
-        'num_workers': 1,
+        'num_workers': 4,
         'episodes': 10,
-        'asynch_update_freq': 8,
+        'asynch_update_freq': 1000,
         'sync_beta': 1.0,
         'adam_learning_rate': 0.003,
         'discount_factor': 0.99,
@@ -994,7 +996,7 @@ if __name__ == '__main__':
         'stats_epsilon': 0.01,
         'epsilon': 1.0,
         'epsilon_min': 0.1,
-        'epsilon_decay_episodes': 500,
+        'epsilon_decay_episodes': 100,
         'stats_every': 25,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
@@ -1012,10 +1014,10 @@ if __name__ == '__main__':
     options['plot_filename'] = f'a3c_rewards_cartpole.png'
     options['plot_title'] = f"Asynch Actor Critic Cartpole {options['num_workers']} workers"
     # options['start_episode_count'] = 4000
-    options['epsilon'] = 0.0001
-    options['epsilon_min'] = 0.0001
-    options['num_workers'] = 1
-    options['episodes'] = 250
+    # options['epsilon'] = 0.0001
+    # options['epsilon_min'] = 0.0001
+    # options['num_workers'] = 1
+    options['episodes'] = 500
     # options['stats_every'] = 10
     # options['log_level'] = Logger.DEBUG
 
