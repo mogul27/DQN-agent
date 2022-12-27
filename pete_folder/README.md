@@ -1,11 +1,11 @@
 Contains the following implementations:
 ---------------------------------------
 
-* [classic_dqn.py]() A DQN set up to run against gym's Cart-Pole
-* [classic_dqn_torch.py]() Same as classic_dqn.py, but using PyTorch rather than Keras
-* [atari_dqn.py]() A DQN set up to run breakout from gym's Atari games
-* [classic_asynch_q_learning.py]() An asynchronous version of Q-Learning set up to run against Cart-Pole
-* [atari_asynch_q_learning.py]() An asynchronous version of Q-Learning set up to run against breakout
+* [classic_dqn.py](classic_dqn.py) A DQN set up to run against gym's Cart-Pole
+* [classic_dqn_torch.py](classic_dqn_torch.py) Same as classic_dqn.py, but using PyTorch rather than Keras
+* [atari_dqn.py](atari_dqn.py) A DQN set up to run breakout from gym's Atari games
+* [classic_asynch_q_learning.py](classic_asynch_q_learning.py) An asynchronous version of Q-Learning set up to run against Cart-Pole
+* [atari_asynch_q_learning.py](atari_asynch_q_learning.py) An asynchronous version of Q-Learning set up to run against breakout
 
 asynch q-learning
 -----------------
