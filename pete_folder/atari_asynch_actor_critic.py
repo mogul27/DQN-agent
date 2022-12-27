@@ -22,14 +22,14 @@ import torch.optim
 import numpy as np
 
 
-class EGreedyPolicy:
+class ACPolicy:
     """ Assumes every state has the same possible actions.
     """
 
-    def __init__(self, q_func, options=None):
-        """ e-greedy policy based on the supplied q_table.
+    def __init__(self, actor_critic_network, options=None):
+        """ policy using the supplied actor-critic network
 
-        :param q_func: Approximates q values for state action pairs so we can select the best action.
+        :param actor_critic_network: The actor critic network to predict actions and state values
         :param options: can contain:
             'epsilon': small epsilon for the e-greedy policy. This is the probability that we'll
                        randomly select an action, rather than picking the best.
@@ -39,9 +39,9 @@ class EGreedyPolicy:
         self.options = Options(options)
         self.options.default('epsilon', 0.1)
 
-        self.q_func = q_func
+        self.actor_critic_network = actor_critic_network
         self.epsilon = self.options.get('epsilon')
-        self.possible_actions = self.q_func.actions
+        self.possible_actions = self.options.get('actions')
         decay_episodes = self.options.get('epsilon_decay_episodes', 0)
         if decay_episodes == 0:
             self.epsilon_min = self.epsilon
@@ -52,8 +52,16 @@ class EGreedyPolicy:
             # of episodes, not the overall number processed by all workers.
             self.epsilon_decay = (self.epsilon - self.epsilon_min) / decay_episodes
 
+    def get_actions_and_state_value(self, state):
+        # Return softmax of actions, and the state value,
+        action_probs, state_value = self.actor_critic_network(torch.Tensor(np.array([state])))
+        # Squeeze the tensors to remove any dimensions of size 1
+        action_probs = action_probs.squeeze()
+        state_value = state_value.squeeze()
+        return action_probs, state_value
+
     def select_action(self, state):
-        """ The EGreedy policy selects the best action the majority of the time. However, a random action is chosen
+        """ The  policy selects the best action the majority of the time. However, a random action is chosen
         explore_probability amount of times.
 
         :param state: The sate to pick an action for
@@ -64,14 +72,27 @@ class EGreedyPolicy:
         # TODO for actor critic need to return the action and the state value, possibly also the probabilities too
         #      so, will need to make the call to q_func before deciding whether to take a random action. We need
         #      the state value.
-        action_probs, state_value = self.q_func.get_actions_and_state_value(state)
+        action_probs, _ = self.get_actions_and_state_value(state)
 
         if np.random.uniform() < self.epsilon:
             action = self.random_action()
         else:
             action = torch.argmax(action_probs).item()
 
-        return action, action_probs[action], state_value
+        return action
+
+    def sample_action(self, state):
+        """ Selects an action from the distribution of actions returned by the actor.
+
+        :return: (action, log action probability (logit), state value)
+        """
+        action_probs, state_value = self.get_actions_and_state_value(state)
+        action_dist = torch.distributions.Categorical(probs=action_probs)
+
+        action = action_dist.sample().item()
+
+        action_logit = action_dist.logits[action]
+        return action, action_logit, state_value
 
     def random_action(self):
         return random.choice(self.possible_actions)
@@ -83,7 +104,7 @@ class EGreedyPolicy:
 
 
 # PyTorch models inherit from torch.nn.Module
-class QNetwork(nn.Module):
+class ActorCriticNetwork(nn.Module):
     """ Define neural network to be used by the DQN as the Actor-Critic.
 
     It has 2 output layers, one a softmax to give probability of taking an action, the other gives the state value.
@@ -122,11 +143,19 @@ class QNetwork(nn.Module):
 
         return action_probabilities, state_value
 
+    def checksum(self):
+        chk = 0.0
+        state_dict = self.state_dict()
+        for name, layer_weights_or_bias in state_dict.items():
+            chk += layer_weights_or_bias.sum()
+        return chk
+
 
 class AsynchActorCritic:
 
     def __init__(self, options, shared_actor_critic=None):
         self.options = Options(options)
+        self.log = Logger(self.options.get('log_level', Logger.INFO), 'AsynchActorCritic')
 
         self.actions = self.options.get('actions')
         if shared_actor_critic is None:
@@ -147,8 +176,6 @@ class AsynchActorCritic:
             self.work_dir = Path(self.work_dir)
             if not self.work_dir.exists():
                 self.work_dir.mkdir(parents=True, exist_ok=True)
-
-        self.log = Logger(self.options.get('log_level', Logger.INFO), 'AsynchActorCritic')
 
         # Small value to stabilize division operations
         self.eps = np.finfo(np.float32).eps.item()
@@ -196,7 +223,7 @@ class AsynchActorCritic:
     def build_neural_network(self):
         # Create neural network model to predict actions for states.
         try:
-            network = QNetwork(self.options)
+            network = ActorCriticNetwork(self.options)
 
             # network summary
             print(f"network summary:")
@@ -253,15 +280,15 @@ class AsynchActorCritic:
         return returns
 
     # TODO : change this for actor critic
-    def process_batch(self, states, actions, rewards, next_states, terminal, action_probs, state_values):
-        """ Process the batch and update the q_func, value function approximation.
+    def process_batch(self, states, actions, rewards, next_states, terminal, action_logits, state_values):
+        """ Process the batch and update the actor-critic network.
 
         :param states: List of states
         :param actions: List of actions, one for each state
         :param rewards: List of rewards, one for each state
         :param next_states: List of next_states, one for each state
         :param terminal: List of terminal, one for each state
-        :param action_probs: List of probabilities of the selected action, one for each state
+        :param action_logits: List of logits of the selected action, one for each state
         :param state_values: List of state values, one for each state
         """
         # If it's not
@@ -273,12 +300,13 @@ class AsynchActorCritic:
 
         # Compute the loss and its gradients.
         # state value for terminated state is zero
-        state_values = not_terminal * torch.stack(state_values)
-        advantage = discounted_returns - state_values
-        # TODO : fix following hack for small probabilities, log of which ends up very large -ve number.
-        action_log_probs = torch.log(torch.stack(action_probs) + 1e-6)
-        actor_loss = -torch.sum(action_log_probs * advantage)
-        critic_loss = self.loss_fn(state_values, discounted_returns)
+        # state_values = not_terminal * torch.stack(state_values)
+        advantage = discounted_returns - torch.stack(state_values)
+        actor_losses = -torch.stack(action_logits) * advantage
+        actor_loss = actor_losses.sum()
+        critic_losses = [self.loss_fn(v, r) for v, r in zip(state_values, discounted_returns)]
+        critic_loss = torch.stack(critic_losses).sum()
+        # # TODO : scale the losses?
         loss = actor_loss + critic_loss
         if loss == loss == math.inf:
             self.log.warn(f"loss is inf : {loss}")
@@ -287,22 +315,31 @@ class AsynchActorCritic:
         if loss != loss:
             # we have a NaN?
             self.log.warn(f"loss is nan : {loss}")
-        self.log.debug(f"actor_loss={actor_loss.item()}, critic_loss={critic_loss.item()}, loss={loss.item()}, ")
-        # TODO : how does loss.backward know what to do?
+        self.log.debug(f"actions={actions}, actor_loss={actor_loss.item()}, critic_loss={critic_loss.item()}, loss={loss.item()}, ")
+
         loss.backward()
+        # actor_loss.backward()
+        # critic_loss.backward()
+
+        # TODO : clip the gradient?
 
         # Adjust learning weights in the shared network
         for shared_param, local_param in zip(self.shared_actor_critic.parameters(), self.local_actor_critic.parameters()):
             shared_param._grad =local_param.grad
+
         self.optimizer.step()
-        return loss.item()
+        loss_value = loss.item(), actor_loss.item(), critic_loss.item()
+        del loss
+        del actor_loss
+        del critic_loss
+        return loss_value
 
 
 class AsynchQLearnerWorker(mp.Process):
 
-    def __init__(self, asynch_actor_critic, messages, grad_update_queue, info_queue, options=None):
+    def __init__(self, shared_actor_critic, messages, grad_update_queue, info_queue, options=None):
         super().__init__()
-        self.asynch_actor_critic = asynch_actor_critic
+        self.shared_actor_critic = shared_actor_critic
         # messages is a mp.Queue used to receive messages from the controller
         self.messages = messages
         self.grad_update_queue = grad_update_queue
@@ -351,7 +388,8 @@ class AsynchQLearnerWorker(mp.Process):
     def asynch_grad_update(self, experiences):
         """ Process the batch of experiences, calling asynch_actor_critic to apply them.
 
-        :param experiences: List of tuples with state, action, reward, next_state, terminated
+        :param experiences: List of tuples with state, action, reward, next_state, terminated,
+                                                action_logit, state_value
         """
         # swap list of tuples to individual lists
         states = []
@@ -359,25 +397,27 @@ class AsynchQLearnerWorker(mp.Process):
         actions = []
         rewards = []
         terminal = []
-        action_probs = []
+        action_logits = []
         state_values = []
-        for s, a, r, ns, t, ap, sv in experiences:
+        for s, a, r, ns, t, alp, sv in experiences:
             states.append(s)
             actions.append(a)
             rewards.append(r)
             next_states.append(ns)
             terminal.append(t)
-            action_probs.append(ap)
+            action_logits.append(alp)
             state_values.append(sv)
 
         loss = self.asynch_actor_critic.process_batch(states, actions, rewards, next_states, terminal,
-                                                action_probs, state_values)
+                                                action_logits, state_values)
 
         try:
             self.log.trace(f"Sending number of steps to controller {len(experiences)}")
             self.grad_update_queue.put(len(experiences))
         except Exception as e:
             self.log.error(f"failed to send steps to grad_update_queue", e)
+
+        del experiences[:]
 
         # Update local actor_critic with latest shared weights so that the policy uses the latest
         self.asynch_actor_critic.synch_shared_with_local()
@@ -429,9 +469,9 @@ class AsynchQLearnerWorker(mp.Process):
             'stop': None
         }
 
-        self.asynch_actor_critic = AsynchActorCritic(self.options, self.asynch_actor_critic)
+        self.asynch_actor_critic = AsynchActorCritic(self.options, self.shared_actor_critic)
         # Use a local copy of the actor_critic for the policy
-        self.policy = EGreedyPolicy(self.asynch_actor_critic, self.options)
+        self.policy = ACPolicy(self.asynch_actor_critic.local_actor_critic, self.options)
         self.log.info(f"Created policy epsilon={self.policy.epsilon}, "
                       f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
@@ -445,6 +485,7 @@ class AsynchQLearnerWorker(mp.Process):
         experiences = []
         losses = []
         terminated = True   # default to true to get initial reset call
+        life_lost = False
 
         while True:
             if self.worker_throttle is not None:
@@ -456,7 +497,8 @@ class AsynchQLearnerWorker(mp.Process):
                 self.log.info(F"stopping due to request from controller")
                 return
 
-            if len(experiences) >= self.options.get('asynch_update_freq'):
+            if len(experiences) >= self.options.get('asynch_update_freq', 5):
+            # # if (terminated or life_lost) and len(experiences) > 0:
                 loss = self.asynch_grad_update(experiences)
                 losses.append(loss)
                 experiences = []
@@ -469,7 +511,7 @@ class AsynchQLearnerWorker(mp.Process):
                 state = [DataWithHistory.empty_state() for i in range(3)]
                 state.append(self.reformat_observation(obs))
 
-                action, action_prob, state_value = self.policy.select_action(state)
+                action, action_logit, state_value = self.policy.sample_action(state)
 
                 if 'lives' in info:
                     # initialise the starting number of lives
@@ -481,7 +523,7 @@ class AsynchQLearnerWorker(mp.Process):
 
             else:
                 if need_refresh:
-                    action, action_prob, state_value = self.policy.select_action(state)
+                    action, action_logit, state_value = self.policy.sample_action(state)
                     need_refresh = False
 
                 # take a step and get the next action from the policy.
@@ -496,10 +538,10 @@ class AsynchQLearnerWorker(mp.Process):
 
                 # Choose A' from S' using policy derived from asynch_actor_critic
                 # TODO : for actor critic we get the action probabilities and state value
-                next_action, next_action_prob, next_state_value = self.policy.select_action(next_state)
+                next_action, next_action_logit, next_state_value = self.policy.sample_action(next_state)
                 # TODO : maybe skip adding every state and just add every nth?
                 experiences.append((np.array(state), action, reward, np.array(next_state),
-                                            terminated or life_lost, action_prob, state_value))
+                                            terminated or life_lost, action_logit, state_value))
 
                 steps += 1
                 steps_since_asynch_update += 1
@@ -510,6 +552,11 @@ class AsynchQLearnerWorker(mp.Process):
                     losses.append(loss)
                     experiences = []
                     need_refresh = True
+                    loss_total, actor_loss_total, critic_loss_total = 0, 0, 0
+                    for loss, actor_loss, critic_loss in losses:
+                        loss_total += loss
+                        actor_loss_total += actor_loss
+                        critic_loss_total += critic_loss
                     try:
                         # print(f"send info message from worker")
                         self.info_queue.put({
@@ -519,7 +566,9 @@ class AsynchQLearnerWorker(mp.Process):
                             'epsilon': self.policy.epsilon,
                             'shared_network_checksum': self.asynch_actor_critic.get_shared_checksum(),
                             'local_network_checksum': self.asynch_actor_critic.get_local_checksum(),
-                            'avg_loss': sum(losses) / len(losses)
+                            'avg_loss': loss_total / len(losses),
+                            'avg_actor_loss': actor_loss_total / len(losses),
+                            'avg_critic_loss': critic_loss_total / len(losses)
                         })
                     except Exception as e:
                         self.log.error(f"worker failed to send to info_queue", e)
@@ -527,7 +576,10 @@ class AsynchQLearnerWorker(mp.Process):
                     # apply epsilon decay after each episode
                     self.policy.decay_epsilon()
 
-                state, action, action_prob, state_value = next_state, next_action, next_action_prob, next_state_value
+                state = next_state
+                action = next_action
+                action_logit = next_action_logit
+                state_value = next_state_value
 
 
 class AsynchStatsCollector(mp.Process):
@@ -544,17 +596,15 @@ class AsynchStatsCollector(mp.Process):
 
         # set these up at the start of run. Saves them being pickled/reloaded when the new process starts.
         self.tasks = None
-        self.q_func = None
         self.policy = None
         self.num_lives = 0
-        self.best_reward = None
-        self.best_episode = 0
         self.last_n_scores = None
         self.stats = None
         self.work_dir = None
         self.stats_file = None
         self.info_file = None
         self.log = None
+        self.high_score = self.options.get('high_score', 0)
 
     def get_latest_tasks(self):
         """ Get the latest tasks from the controller.
@@ -587,9 +637,8 @@ class AsynchStatsCollector(mp.Process):
         if self.tasks['play'] is not None:
             contents = self.tasks['play']
             self.tasks['play'] = None
-            self.log.trace(f"stats_collector: update weights for play "
-                           f"{self.q_func.weights_checksum(contents['weights'])}")
-            self.q_func.set_shared_weights(contents['weights'])
+            # reset the weights for the policy's actor_critic_network to those passed from the controller
+            self.policy.actor_critic_network.load_state_dict(contents['weights'])
 
             episode = contents['episode_count']
             play_rewards = []
@@ -706,7 +755,7 @@ class AsynchStatsCollector(mp.Process):
                 # assume game starts with action 1 - Fire.
                 action = 1
             else:
-                action, _, _ = self.policy.select_action(state)
+                action = self.policy.select_action(state)
             if action == last_action:
                 repeated_action_count += 1
                 # check it doesn't get stuck
@@ -733,15 +782,14 @@ class AsynchStatsCollector(mp.Process):
                 print(f"Break out as we've taken {steps} steps. Something has probably gone wrong...")
                 break
 
-        if self.best_reward is None or total_reward > self.best_reward:
-            self.best_reward = total_reward
-            self.best_episode = episode_count
+        if total_reward > self.high_score:
+            self.high_score = total_reward
+            self.save_weights(episode_count, self.high_score)
 
         self.last_n_scores.append(total_reward)
 
-        self.log.info(f"Play : weights from episode {episode_count}"
+        self.log.info(f"Play : Episode {episode_count}"
                       f" : Reward = {total_reward}"
-                      f" : shared_net: {self.q_func.get_shared_checksum():0.4f}"
                       f" : Action freq: {action_frequency}"
                       f" : Avg reward (last {len(self.last_n_scores)}) = {mean(self.last_n_scores):0.2f}")
 
@@ -754,7 +802,7 @@ class AsynchStatsCollector(mp.Process):
         self.log = Logger(self.options.get('log_level', Logger.INFO), f'Stats {self.pid}')
         self.log.info(f"started run")
 
-        self.options.default('stats_epsilon', 0.05)
+
         self.last_n_scores = deque(maxlen=10)
         self.stats = []
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
@@ -777,9 +825,11 @@ class AsynchStatsCollector(mp.Process):
         }
 
         # TODO : just needs a simple thing to allow it to get the actions.
-        self.q_func = AsynchActorCritic(self.options)
+        actor_critic_network = ActorCriticNetwork(self.options)
         # use a policy with epsilon of 0.05 for playing to collect stats.
-        self.policy = EGreedyPolicy(self.q_func, {'epsilon': self.options.get('stats_epsilon')})
+        self.policy = ACPolicy(actor_critic_network, self.options)
+        self.policy.epsilon = self.options.get('stats_epsilon', 0.01)
+        self.policy.min_epsilon = self.options.get('stats_epsilon', 0.01)
         print(f"stats collector {self.pid}: Created policy epsilon={self.policy.epsilon}, "
               f"min={self.policy.epsilon_min}, decay={self.policy.epsilon_decay}")
 
@@ -793,11 +843,28 @@ class AsynchStatsCollector(mp.Process):
                 print(F"stats collector {self.pid} stopping due to request from controller")
                 return
 
+    def get_weights_file(self, episode, high_score):
+        if self.work_dir is not None:
+            weights_file_name = self.options.get('weights_file', f"{self.options.get('env_name')}"
+                                                                 f" s-{int(high_score)} e-{episode}.pth")
+            weights_file_name = 'score_weights/' + weights_file_name
+            return self.work_dir / weights_file_name
+
+        return None
+
+    def save_weights(self, episode, high_score):
+        weights_file = self.get_weights_file(episode, high_score)
+        if weights_file is not None:
+            if not weights_file.parent.exists():
+                weights_file.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(self.policy.actor_critic_network.state_dict(), weights_file)
+
 
 class AsynchQLearningController:
 
     def __init__(self, options=None):
         self.options = Options(options)
+        self.log = Logger(self.options.get('log_level', Logger.INFO), "Controller")
 
         # location for files.
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
@@ -806,7 +873,7 @@ class AsynchQLearningController:
             self.work_dir.mkdir(parents=True, exist_ok=True)
 
         # shared actor critic network
-        self.shared_actor_critic = QNetwork(self.options)
+        self.shared_actor_critic = ActorCriticNetwork(self.options)
         self.load_weights()
         self.shared_actor_critic.share_memory()
 
@@ -815,8 +882,6 @@ class AsynchQLearningController:
         self.stats_collector = None
         self.delta_fraction = self.options.get('delta_fraction', 1.0)
         self.details_file = self.create_details_file()
-        self.log = Logger(self.options.get('log_level', Logger.INFO), "Controller")
-
 
     def get_weights_file(self):
         if self.work_dir is not None:
@@ -864,7 +929,8 @@ class AsynchQLearningController:
         time_stamp = time.strftime("%Y%m%d-%H%M%S")
         details_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
         with open(details_file, 'a') as file:
-            file.write(f"date-time,episode,total_steps,reward,pid,steps,avg_loss,shared_net,local_net,epsilon\n")
+            file.write(f"date-time,episode,total_steps,reward,pid,steps,avg_loss,avg_actor_loss,avg_critic_loss,"
+                       f"shared_net,local_net,epsilon\n")
         return details_file
 
     def log_episode_detail(self, episode_detail, total_steps, episode):
@@ -881,6 +947,8 @@ class AsynchQLearningController:
                        f",{episode_detail['worker']}"
                        f",{episode_detail['steps']}"
                        f",{episode_detail['avg_loss']:0.6f}"
+                       f",{episode_detail['avg_actor_loss']:0.6f}"
+                       f",{episode_detail['avg_critic_loss']:0.6f}"
                        f",{episode_detail['shared_network_checksum']}"
                        f",{episode_detail['local_network_checksum']}"
                        f",{episode_detail['epsilon']}"
@@ -895,14 +963,14 @@ class AsynchQLearningController:
         # set up the workers
 
         self.log.info(f"starting {self.options.get('num_workers', 1)} workers")
-        worker_eps = [0.05, 0.5, 0.15, 0.1, 0.2, 0.15, 0.25, 0.1]
+        # worker_eps = [0.5, 0.05, 0.15, 0.1, 0.2, 0.15, 0.25, 0.1]
         for i in range(self.options.get('num_workers', 1)):
-            epsilon = worker_eps[i % len(worker_eps)]
-            self.options.set('epsilon', epsilon)
-            self.options.set('epsilon_min', epsilon)
+            # epsilon = worker_eps[i % len(worker_eps)]
+            # self.options.set('epsilon', epsilon)
+            # self.options.set('epsilon_min', epsilon)
             worker_queue = mp.Queue()
             worker = AsynchQLearnerWorker(self.shared_actor_critic,
-                                         worker_queue, grad_update_queue, info_queue, self.options)
+                                          worker_queue, grad_update_queue, info_queue, self.options)
             worker.daemon = True    # helps tidy up child processes if parent dies.
             worker.start()
             self.workers.append((worker, worker_queue))
@@ -1013,14 +1081,14 @@ if __name__ == '__main__':
         'actions': [0, 1, 2, 3],
         'num_workers': 8,
         'episodes': 5000,
-        'asynch_update_freq': 8,
+        'asynch_update_freq': 1000,
         'sync_beta': 1.0,
-        'adam_learning_rate': 0.0001,
+        'adam_learning_rate': 0.0005,
         'discount_factor': 0.99,
-        'load_weights': True,
+        'load_weights': False,
         'save_weights': True,
         'stats_epsilon': 0.01,
-        # 'epsilon': 0.1,
+        # 'epsilon': 1.0,       # using sample rather than e-greedy
         # 'epsilon_min': 0.1,
         # 'epsilon_decay_episodes': 500,
         'stats_every': 25,  # how frequently to collect stats
@@ -1037,13 +1105,13 @@ if __name__ == '__main__':
     #         options['adam_learning_rate'] = lr
     #         create_and_run_agent(options)
 
-    options['plot_filename'] = f'asynch_rewards_breakout.png'
-    options['plot_title'] = f"Asynch Q-Learning Breakout {options['num_workers']} workers"
+    options['plot_filename'] = f'a3c_rewards_breakout.png'
+    options['plot_title'] = f"Asynch Actor Critic Breakout {options['num_workers']} workers"
     # options['start_episode_count'] = 4000
-    options['epsilon'] = 0.1
-    options['num_workers'] = 1
-    options['episodes'] = 100
-    options['stats_every'] = 5
+    # options['epsilon'] = 0.1
+    # options['num_workers'] = 1
+    # options['episodes'] = 150
+    # options['stats_every'] = 10
     # options['log_level'] = Logger.DEBUG
 
     create_and_run_agent(options)
