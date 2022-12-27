@@ -83,6 +83,30 @@ class Actor:
         probs_output = self.network.predict_on_batch(state)[0]
 
         # actions
+        action = np.random.choice(action_space, 1, p=probs_output)[0]
+        #action = np.argmax(probs_output)
+
+
+        return action
+
+ 
+    def test_predict(self, state: np.array, action_space: list) -> np.array:
+        """Given an environment state, return an array of continuous actions
+        with the mean and standard deviation of the distribution from which
+        the actions are sampled.
+
+        Parameters:
+        state (np.array): environment state returned by env.step()
+        action_space (list): List of actions available to the agent
+
+        Returns:
+        sampled_actions (np.array): Array of continuous actions for the agent to take
+        """
+        
+        state = np.expand_dims(state, axis=0)
+        probs_output = self.network.predict_on_batch(state)[0]
+
+        # actions
         #action = np.random.choice(action_space, 1, p=probs_output)[0]
         action = np.argmax(probs_output)
 

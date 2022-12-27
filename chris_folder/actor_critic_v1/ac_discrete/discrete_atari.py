@@ -23,13 +23,12 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
     # Create Environment and get environment attributes
         # Initialise a new environment
     env = gym.make("BreakoutNoFrameskip-v4")
+    # Check thiswas changed
     load_weights = True
-
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
     action_space = [i for i in range(env.action_space.n)]
     prev_state, info = env.reset()
-
 
     state_dims = wrapped_env.observation_space.shape
     state_dims = state_dims + (1,)
