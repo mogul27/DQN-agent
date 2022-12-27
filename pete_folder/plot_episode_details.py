@@ -20,14 +20,14 @@ def plot_rewards(x, x_label, rewards, title, file_name):
     avg_rwd = []
     last_few = []
     for reward in rewards:
-        if len(last_few) >= 10:
+        if len(last_few) >= 40:
             last_few.pop(0)
         last_few.append(reward)
         avg_rwd.append(sum(last_few)/len(last_few))
     p, = ax.plot(x, avg_rwd, label='moving average')
     plots.append(p)
 
-    ax.legend(handles=plots)
+    ax.legend(handles=plots,loc='upper left')
 
     fig.tight_layout()
 
@@ -105,7 +105,7 @@ def read_data_and_plot_rewards(options):
     plot_filename = Path(options.get('plot_filename', 'async_rewards.png'))
     file_name = plot_filename.stem + ' by episode' + plot_filename.suffix
     title = options.get('plot_title', 'Asynch Q-Learning')
-    plot_rewards(episodes, 'steps', rewards, title, out_dir / file_name)
+    plot_rewards(episodes, 'episodes', rewards, title, out_dir / file_name)
 
     # Same again, but by steps
 
@@ -123,7 +123,7 @@ if __name__ == '__main__':
 
     read_data_and_plot_rewards(Options({
         'out_dir': "data/async_q_learning/",
-        'data_dir': "data/async_q_learning/fixed loss bug/",
-        'plot_filename': f'async_q_learning_rewards_breakout 1.png',
+        'data_dir': "data/async_q_learning/lower min eps/",
+        'plot_filename': f'async_q_learning_rewards_breakout 2.png',
         'plot_title': f"Async Q-Learning Breakout 8 workers"
     }))
