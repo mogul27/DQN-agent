@@ -45,11 +45,11 @@ class Actor:
 
         return None
 
-    def save_network_weights(self, game_type: str="box2d") -> None:
+    def save_network_weights(self, game_type: str="box2d", episode: int=0) -> None:
         """Save network weights to be loaded"""
 
         if game_type == "atari":
-            self.network.save_weights("atari_actor_weights.h5")
+            self.network.save_weights("GoldenRunWeights/atari_actor_weights{}.h5".format(episode))
         
         else:
             self.network.save_weights("actor_weights.h5")
@@ -236,11 +236,11 @@ class Critic:
         self.network.train_on_batch(state, td_target)
 
 
-    def save_network_weights(self, game_type: str="box2d") -> None:
+    def save_network_weights(self, game_type: str="box2d", episode: int=0) -> None:
         """Save network weights to be loaded"""
 
         if game_type == "atari":
-            self.network.save_weights("atari_critic_weights.h5")
+            self.network.save_weights("GoldenRunWeights/atari_critic_weights{}.h5".format(episode))
         
         else:
             self.network.save_weights("critic_weights.h5")
@@ -251,7 +251,7 @@ class Critic:
         """Load previously saved weights for critic"""
 
         if game_type == "atari":
-            self.network.load_weights("atari_critic_weights.h5")
+            self.network.load_weights("GoldenRunWeights/atari_critic_weights.h5")
         
         else:
             self.network.load_weights("critic_weights.h5")

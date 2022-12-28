@@ -25,7 +25,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         # Initialise a new environment
     env = gym.make("BreakoutNoFrameskip-v4")
 
-    load_weights = True
+    load_weights = False
     # Apply preprocessing from original DQN paper including greyscale and cropping
     wrapped_env = gym.wrappers.AtariPreprocessing(env)
     action_space = [i for i in range(env.action_space.n)]
@@ -46,11 +46,13 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
         actor.load_network_weights(game_type='atari')
         critic.load_network_weights(game_type='atari')
 
-    # Initialise list to hold rewards across episodes
+    # Initialise list to hold rewards across episodes and parameters for recording performance
     episode_reward_list = []
+    window_size = 10
+    window_average_list = []
 
     # Episode begins here
-    for episode_count in range(num_episodes):
+    for episode_count in range(1, num_episodes):
 
         # Initialise variables to track episode progress and performance
         steps = 0
@@ -132,25 +134,48 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             prev_network_input = copy.deepcopy(next_network_input)
             episode_reward += reward
             steps += 1
-            
+        
+
+
+        # Calculate an N episode running average
+        
+        if episode_count > window_size:
+            window = episode_reward[-window_size:]
+            running_average = np.mean(window)
+
+        else:
+            running_average = episode_reward
+
+        window_average_list.append(running_average)
+
         episode_reward_list.append(episode_reward)
-        print("Episode: {}, Total Reward: {}, Steps: {}"
-              .format(episode_count, episode_reward, steps))
+        print("Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
+              .format(episode_count, episode_reward, steps, window_size, running_average))
         # Record
 
         if episode_count == 0:
             with open('atarirewards.txt', 'w') as reward_txt:
-                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}".format(
-                    episode_count, episode_reward, steps))
+                reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
+                .format(episode_count, episode_reward, steps, window_size, running_average))
         else:
             with open('atarirewards.txt', 'a') as reward_txt:
-                reward_txt.write("\n Episode: {}, Total Reward: {}, Steps: {}".format(
-                    episode_count, episode_reward, steps))
+                reward_txt.write("\n Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
+                .format(episode_count, episode_reward, steps, window_size, running_average))
     
         # save weights every 100 episodes
         if episode_count % 100 == 0:
-            critic.save_network_weights(game_type="atari")
-            actor.save_network_weights(game_type="atari")
+            critic.save_network_weights(game_type="atari", episode=episode_count)
+            actor.save_network_weights(game_type="atari", episode=episode_count)
+
+        # Every 1000 episodes display a plot of progress
+        if episode_count % 1000 == 0:
+            episode_axis = [i for i in range(episode_count)]
+            plt.plot(episode_axis, window_average_list)
+            plt.xlabel("Episode")
+            plt.xticks(np.arange(0, episode_count, step=200))
+            plt.ylabel("{}-Window Average Reward".format(window_size))
+            plt.show()
+
     
     # After num_episodes of episodes have run
     episode_axis = [i for i in range(num_episodes)]
