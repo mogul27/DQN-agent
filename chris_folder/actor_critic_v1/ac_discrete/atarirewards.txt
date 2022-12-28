@@ -1,22 +1,14 @@
-Episode: 0, Total Reward: 1.0, Steps: 152, 10-Window_Average: 0.0
- Episode: 1, Total Reward: 0.0, Steps: 122, 10-Window_Average: 0.0
- Episode: 2, Total Reward: 0.0, Steps: 122, 10-Window_Average: 0.0
- Episode: 3, Total Reward: 1.0, Steps: 150, 10-Window_Average: 0.0
- Episode: 1, Total Reward: 0.0, Steps: 122, 10-Window_Average: 0.0
- Episode: 2, Total Reward: 1.0, Steps: 152, 10-Window_Average: 0.0
- Episode: 3, Total Reward: 2.0, Steps: 198, 10-Window_Average: 0.0
+Episode: 1, Total Reward: 4.0, Steps: 240, 10-Window_Average: 4.0
+ Episode: 2, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
+ Episode: 3, Total Reward: 15.0, Steps: 433, 10-Window_Average: 15.0
  Episode: 4, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
- Episode: 5, Total Reward: 4.0, Steps: 320, 10-Window_Average: 0.0
- Episode: 6, Total Reward: 0.0, Steps: 124, 10-Window_Average: 0.0
- Episode: 7, Total Reward: 0.0, Steps: 124, 10-Window_Average: 0.0
- Episode: 8, Total Reward: 4.0, Steps: 318, 10-Window_Average: 0.0
- Episode: 1, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
- Episode: 2, Total Reward: 3.0, Steps: 245, 10-Window_Average: 3.0
- Episode: 3, Total Reward: 0.0, Steps: 122, 10-Window_Average: 0.0
- Episode: 4, Total Reward: 0.0, Steps: 122, 10-Window_Average: 0.0
- Episode: 5, Total Reward: 1.0, Steps: 155, 10-Window_Average: 1.0
+ Episode: 5, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
  Episode: 6, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
  Episode: 7, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
  Episode: 8, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
  Episode: 9, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
  Episode: 10, Total Reward: 0.0, Steps: 125, 10-Window_Average: 0.0
+ Episode: 11, Total Reward: 0.0, Steps: 125, 10-Window_Average: 1.5
+ Episode: 12, Total Reward: 3.0, Steps: 214, 10-Window_Average: 1.8
+ Episode: 13, Total Reward: 1.0, Steps: 153, 10-Window_Average: 0.4
+ Episode: 14, Total Reward: 9.0, Steps: 400, 10-Window_Average: 1.3

@@ -21,8 +21,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
     None
     """
 
-    # Create Environment and get environment attributes
-        # Initialise a new environment
+    # Initialise a new environment
     env = gym.make("BreakoutNoFrameskip-v4")
 
     load_weights = False
@@ -134,13 +133,12 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             prev_network_input = copy.deepcopy(next_network_input)
             episode_reward += reward
             steps += 1
-        
 
-
+        episode_reward_list.append(episode_reward)
         # Calculate an N episode running average
         
         if episode_count > window_size:
-            window = episode_reward[-window_size:]
+            window = episode_reward_list[-window_size:]
             running_average = np.mean(window)
 
         else:
@@ -148,12 +146,11 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
 
         window_average_list.append(running_average)
 
-        episode_reward_list.append(episode_reward)
         print("Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
               .format(episode_count, episode_reward, steps, window_size, running_average))
         # Record
 
-        if episode_count == 0:
+        if episode_count == 1:
             with open('atarirewards.txt', 'w') as reward_txt:
                 reward_txt.write("Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
                 .format(episode_count, episode_reward, steps, window_size, running_average))
@@ -168,7 +165,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             actor.save_network_weights(game_type="atari", episode=episode_count)
 
         # Every 1000 episodes display a plot of progress
-        if episode_count % 1000 == 0:
+        if episode_count % 14 == 0:
             episode_axis = [i for i in range(episode_count)]
             plt.plot(episode_axis, window_average_list)
             plt.xlabel("Episode")
