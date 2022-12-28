@@ -165,7 +165,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
             actor.save_network_weights(game_type="atari", episode=episode_count)
 
         # Every 1000 episodes display a plot of progress
-        if episode_count % 14 == 0:
+        if episode_count % 1000 == 0:
             episode_axis = [i for i in range(episode_count)]
             plt.plot(episode_axis, window_average_list)
             plt.xlabel("Episode")
