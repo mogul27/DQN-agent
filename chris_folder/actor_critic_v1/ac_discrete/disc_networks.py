@@ -7,6 +7,7 @@ from keras.initializers import GlorotNormal, RandomUniform
 import tensorflow_probability as tfp
 import keras.backend as backend
 
+
 class Actor:
     """
     The Actor class is used to take actions in the environment based on policy
@@ -107,8 +108,8 @@ class Actor:
         probs_output = self.network.predict_on_batch(state)[0]
 
         # actions
-        #action = np.random.choice(action_space, 1, p=probs_output)[0]
-        action = np.argmax(probs_output)
+        action = np.random.choice(action_space, 1, p=probs_output)[0]
+        #action = np.argmax(probs_output)
 
 
         return action

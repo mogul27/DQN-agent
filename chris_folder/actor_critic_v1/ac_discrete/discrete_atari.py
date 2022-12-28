@@ -5,7 +5,7 @@ from disc_networks import ConvActor, ConvCritic
 import matplotlib.pyplot as plt
 
 def main(gamma :float=0.99, actor_lr: float=0.001,
-         critic_lr: float=0.001, num_actions: int=2,
+         critic_lr: float=0.001, num_actions: int=4,
          num_episodes: int=1000) -> None:
     """Run main loop for training A2C network on bipedal walker env
     
