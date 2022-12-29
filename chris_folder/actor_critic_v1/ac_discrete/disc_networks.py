@@ -13,9 +13,10 @@ class Actor:
     The Actor class is used to take actions in the environment based on policy
 
     :ivar network: references the Actor's neural network
+    :ivar entropy weight: Sets the weight applied to entropy in Actor loss function
     """
 
-    def __init__(self, entropy_weight=0.5) -> None:
+    def __init__(self, entropy_weight: float=0.5) -> None:
         self.network = None
         self.entropy_weight = entropy_weight
 
@@ -25,9 +26,10 @@ class Actor:
         """ Initialise the neural network for the actor
 
         Parameters:
-        state_dims (tuple): shape of the observable environment (default (24,))
-        num_actions (int): Number of actions that the Actor must take (default 4)
+        state_dims (tuple): shape of the observable environment (default (4,))
+        num_actions (int): Number of actions that the Actor must take (default 2)
         learning_rate (float): Learning rate for the Actor neural network (default 0.001)
+        
 
         Returns:
         None
@@ -39,6 +41,8 @@ class Actor:
         model.add(Dense(num_actions, activation="softmax"))
 
         optimiser = Adam(learning_rate=learning_rate)
+
+        # Use custom loss function defined in same file
         model.compile(loss=self.actor_custom_loss, optimizer=optimiser)
 
         self.network = model
@@ -56,8 +60,19 @@ class Actor:
 
         return None
 
-    def load_network_weights(self, game_type: str="box2d") -> None:
-        """Load previously saved weights for actor"""
+    def load_network_weights(self, game_type: str="box2d",
+                             weights_path_override=None) -> None:
+        """Load previously saved weights for actor
+        
+        Parameters
+        game_type (str): Specifies what kind of environmnet the agent is operating in
+        weights_path_override: Allows user to override default weight names to load weights
+        stored under different names or in different locations
+        """
+
+        if weights_path_override:
+            self.network.load_weights(weights_path_override)
+            return None
 
         if game_type == "atari":
             self.network.load_weights("atari_actor_weights.h5")
@@ -68,49 +83,57 @@ class Actor:
         return None
 
     def predict(self, state: np.array, action_space: list) -> np.array:
-        """Given an environment state, return an array of continuous actions
-        with the mean and standard deviation of the distribution from which
-        the actions are sampled.
+        """Given an environment state and action space, return an action
+        sampled from the actor probability distribution"
 
         Parameters:
         state (np.array): environment state returned by env.step()
         action_space (list): List of actions available to the agent
 
         Returns:
-        sampled_actions (np.array): Array of continuous actions for the agent to take
+        action (np.array): Action for agent to take
         """
         
+        # expand dimensions for CNN input
         state = np.expand_dims(state, axis=0)
+        # Get the probability distribution returned by actor
         probs_output = self.network.predict_on_batch(state)[0]
 
-        # actions
+        # Sample probability ditribution to get action
         action = np.random.choice(action_space, 1, p=probs_output)[0]
-        #action = np.argmax(probs_output)
-
 
         return action
 
  
-    def test_predict(self, state: np.array, action_space: list) -> np.array:
-        """Given an environment state, return an array of continuous actions
-        with the mean and standard deviation of the distribution from which
-        the actions are sampled.
+    def test_predict(self, state: np.array, action_space: list,
+                     sample=True) -> np.array:
+        """Given an environment state and action space, return an action
+        sampled from the actor probability distribution
+        Used when observing agent to give choice of sampling or maximising
+        from actor distribution"
 
         Parameters:
         state (np.array): environment state returned by env.step()
         action_space (list): List of actions available to the agent
+        sample (bool): Indicates whether to sample or take max action
+        from action probabiliy distribution
 
         Returns:
-        sampled_actions (np.array): Array of continuous actions for the agent to take
+        action (np.array): Action for agent to take
+
         """
         
+        # Expand dimensions for CNN
         state = np.expand_dims(state, axis=0)
+        # Get the probability distribution returned by actor
         probs_output = self.network.predict_on_batch(state)[0]
 
-        # actions
-        action = np.random.choice(action_space, 1, p=probs_output)[0]
-        #action = np.argmax(probs_output)
-
+        if sample == True:
+            # Sample from probability distribution
+            action = np.random.choice(action_space, 1, p=probs_output)[0]
+        else:
+            # Take the action with the highest probability
+            action = np.argmax(probs_output)
 
         return action
 
@@ -122,7 +145,7 @@ class Actor:
         state (np.array): environment state returned by env.step()
         adv_function (np.array): Advantage calculated using Critic valuation
         of action against state value
-        action_take (int): action taken by the agent
+        action_taken (int): action taken by the agent
         num_action (int): Number of available actions to the agent
         
         Returns:
@@ -130,12 +153,12 @@ class Actor:
         """
         
         
-        # Use delta and advantage as categorical crossentropy does the negative log part
+        # Expand state for input to CNN
         state = np.expand_dims(state, axis=0)
+        # Retrieve the probability distribution of actions for a given state
         softmax_probs = self.network.predict_on_batch(state)[0]
-        print(softmax_probs)
 
-        # Create array and set action taken to 1 to one hot encode
+        # One hot encode the action taken from possible actions
         actual_action = np.zeros(num_actions)
         actual_action[action_taken] = 1
         # Calculate deltheta (gradient)
@@ -145,7 +168,7 @@ class Actor:
         # https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f
         deltheta_advantage =  adv_function * deltheta + softmax_probs
         
-        # Train on batch takes (x, y)
+        # Train agent using custom loss function on state and deltheta_advantage
         self.network.train_on_batch(state, deltheta_advantage)
 
         return None
@@ -154,20 +177,22 @@ class Actor:
         """Custom loss functon
 
         Parameters:
-        y_pred (np.array): Predicted values from network
+        y_true: Ground truth value for network
+        y_pred: Predicted values from network
         
         Returns:
-        ???
+        actor_loss: Network loss calculated according to A2C loss function
         
         """
 
-
         clipped_vals = backend.clip(y_pred, 1e-7, 1-1e-7) # Clip before taking log of probs 
-        # get log of probabilities and multiply by delta with advantage
-        log_likelihood =  backend.log(clipped_vals) * y_true 
+        # get log of probabilities for numerical stability
+        log_likelihood =  backend.log(clipped_vals) * y_true
+        # Include entropy bias to prevent agent always selecting same action 
         entropy = backend.sum(clipped_vals * backend.log(clipped_vals))
+        # Calculate Actor Loss for A2C
         actor_loss = backend.sum(-log_likelihood) + (self.entropy_weight * entropy)
-        
+
         return actor_loss
 
 class Critic:
@@ -176,6 +201,7 @@ class Critic:
     state to it's corresponding Q-Value (Value of the state)
 
     :ivar network: references the Critic's neural network
+
     """
 
     def __init__(self) -> None:
@@ -215,9 +241,11 @@ class Critic:
         state_value (np.array): Value for the given state
         """
         
+        # Expand dimensions for input to CNN
         state = np.expand_dims(state, axis=0)
+        # Retrieve the value of the state from Critic network
         state_value = self.network.predict_on_batch(state)
-        state = state_value[0] # Make actions 1-D array
+        state = state_value[0]
         
         return state_value
 
@@ -232,7 +260,9 @@ class Critic:
         None
         """
 
+        # Expand dimensions for input to CNN
         state = np.expand_dims(state, axis=0)
+        # Train critic network with state and td_target
         self.network.train_on_batch(state, td_target)
 
 
@@ -247,8 +277,20 @@ class Critic:
 
         return None
 
-    def load_network_weights(self, game_type: str="box2d") -> None:
-        """Load previously saved weights for critic"""
+    def load_network_weights(self, game_type: str="box2d",
+                            weights_path_override=None) -> None:
+        """Load previously saved weights for critic
+        
+        Parameters
+        game_type (str): Specifies what kind of environmnet the agent is operating in
+        weights_path_override: Allows user to override default weight names to load weights
+        stored under different names or in different locations
+
+        """
+        
+        if weights_path_override:
+            self.network.load_weights(weights_path_override)
+            return None
 
         if game_type == "atari":
             self.network.load_weights("GoldenRunWeights/atari_critic_weights.h5")
@@ -261,9 +303,15 @@ class Critic:
 
 
 class ConvActor(Actor):
-    """Child class of Actor which uses te same methods but different
-    functionality to be compatible with Atari game input
+    """Inherits from Actor: uses te same methods but different
+    functionality (Inclduing convolutional network) to be compatible
+    with Atari game input
+
+    :ivar network: references the Actor's neural network
+    :ivar entropy weight: Sets the weight applied to entropy in Actor loss function
+
     """
+
     def __init__(self, entropy_weight=0.5) -> None:
         super().__init__()
         self.entropy_weight = entropy_weight
@@ -274,14 +322,15 @@ class ConvActor(Actor):
         """ Initialise the neural network for the actor
 
         Parameters:
-        state_dims (tuple): shape of the observable environment (default (24,))
-        num_actions (int): Number of actions that the Actor must take (default 4)
+        state_dims (tuple): shape of the observable environment 
+        num_actions (int): Number of actions that the Actor must take (default 2)
         learning_rate (float): Learning rate for the Actor neural network (default 0.001)
 
         Returns:
         None
         """
 
+        # Use Random uniform with small window as Atari game sensitive to initial conditions
         initialiser = RandomUniform(minval=0, maxval=0.02)
         model = Sequential()
         model.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
@@ -292,22 +341,17 @@ class ConvActor(Actor):
         model.add(Dense(num_actions, activation="softmax", kernel_initializer=initialiser))
 
         optimiser = Adam(learning_rate=learning_rate)
+
+        # Use custom loss function defined in the same file
         model.compile(loss=self.actor_custom_loss, optimizer=optimiser)
         self.network = model
 
         return None
 
 class ConvCritic(Critic):
+    """Inherits from Critic class but uses a Convolutional network
+    rather than feedforward
 
-    """ Initialise th Convlutional neural network for the Critic
-
-    Parameters:
-    state_dims (tuple): shape of the observable environment (default (24,))
-    num_actions (int): Number of actions that the Actor must take (default 4)
-    learning_rate (float): Learning rate for the Actor neural network (default 0.001)
-
-    Returns:
-    None
     """
 
     def __init__(self) -> None:
@@ -315,7 +359,18 @@ class ConvCritic(Critic):
     
     def create_network(self, state_dims: tuple=(4,),
         learning_rate: float=0.001) -> None:
+        """ Initialise th Convlutional neural network for the Critic
 
+        Parameters:
+        state_dims (tuple): shape of the observable environment (default (4,))
+        learning_rate (float): Learning rate for the Actor neural network (default 0.001)
+
+        Returns:
+        None
+
+        """
+
+        # Use Random uniform with small window as Atari game sensitive to initial conditions
         initialiser = RandomUniform(minval=0, maxval=0.02)
         model = Sequential()
         model.add(Conv2D(32, kernel_size=(8, 8), strides=(4, 4), activation='relu', input_shape=state_dims))
