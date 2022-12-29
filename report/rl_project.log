@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2022) (preloaded format=pdflatex 2022.12.29)  29 DEC 2022 12:15
+This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2022) (preloaded format=pdflatex 2022.12.29)  29 DEC 2022 16:13
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -547,38 +547,227 @@ File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
 
 
 {/usr/local/texlive/2022/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
-./rl_project.tex:152: Missing $ inserted.
-<inserted text> 
-                $
-l.152 file:///Users/mogul/Downloads/Mastering_
-                                              the_game_of_Go_with_deep_neura...
 
+./rl_project.tex:133: LaTeX Error: Environment align* undefined.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.133 \begin{align*}
+                    
 ? s
 OK, entering \scrollmode...
-./rl_project.tex:154: Missing $ inserted.
+./rl_project.tex:135: Missing $ inserted.
 <inserted text> 
                 $
-l.154 
+l.135 
+      
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:135: Missing } inserted.
+<inserted text> 
+                }
+l.135 
+      
+I've inserted something that you may have forgotten.
+(See the <inserted text> above.)
+With luck, this will get me unwedged. But if you
+really didn't forget anything, try typing `2' now; then
+my insertion and my current dilemma will both disappear.
+
+./rl_project.tex:135: Missing \endgroup inserted.
+<inserted text> 
+                \endgroup 
+l.135 
+      
+I've inserted something that you may have forgotten.
+(See the <inserted text> above.)
+With luck, this will get me unwedged. But if you
+really didn't forget anything, try typing `2' now; then
+my insertion and my current dilemma will both disappear.
+
+./rl_project.tex:135: Display math should end with $$.
+<to be read again> 
+                   \tex_par:D 
+l.135 
+      
+The `$' that I just saw supposedly matches a previous `$$'.
+So I shall assume that you typed `$$' both times.
+
+./rl_project.tex:135: Extra }, or forgotten \endgroup.
+\par ...m \@noitemerr {\@@par }\fi \else {\@@par }
+                                                  \fi 
+l.135 
+      
+I've deleted a group-closing symbol because it seems to be
+spurious, as in `$x}$'. But perhaps the } is legitimate and
+you forgot something else, as in `\hbox{$x}'. In such cases
+the way to recover is to insert both the forgotten and the
+deleted material, e.g., by typing `I$}'.
+
+./rl_project.tex:136: Missing $ inserted.
+<inserted text> 
+                $
+l.136 \nabla
+            _{\theta} J(\theta) = \sum_{t=0}^{T-1}\nabla_{\theta}\log{\pi_{\...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:137: Missing $ inserted.
+<inserted text> 
+                $
+l.137 
+      
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:137: Missing } inserted.
+<inserted text> 
+                }
+l.137 
+      
+I've inserted something that you may have forgotten.
+(See the <inserted text> above.)
+With luck, this will get me unwedged. But if you
+really didn't forget anything, try typing `2' now; then
+my insertion and my current dilemma will both disappear.
+
+./rl_project.tex:137: Extra }, or forgotten \endgroup.
+\par ...m \@noitemerr {\@@par }\fi \else {\@@par }
+                                                  \fi 
+l.137 
+      
+I've deleted a group-closing symbol because it seems to be
+spurious, as in `$x}$'. But perhaps the } is legitimate and
+you forgot something else, as in `\hbox{$x}'. In such cases
+the way to recover is to insert both the forgotten and the
+deleted material, e.g., by typing `I$}'.
+
+./rl_project.tex:140: Missing $ inserted.
+<inserted text> 
+                $
+l.140 A(s_
+          {t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamm...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+
+./rl_project.tex:141: LaTeX Error: \begin{equation} on input line 132 ended by 
+\end{align*}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.141 \end{align*}
+                  
+Your command was ignored.
+Type  I <command> <return>  to replace it with another command,
+or  <return>  to continue without it.
+
+./rl_project.tex:141: Missing $ inserted.
+<inserted text> 
+                $
+l.141 \end{align*}
+                  
+I've inserted something that you may have forgotten.
+(See the <inserted text> above.)
+With luck, this will get me unwedged. But if you
+really didn't forget anything, try typing `2' now; then
+my insertion and my current dilemma will both disappear.
+
+./rl_project.tex:142: Missing $ inserted.
+<inserted text> 
+                $
+l.142 \end{equation}
+                    
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:142: You can't use `\eqno' in math mode.
+\H@endequation ->\eqno 
+                       \hbox {\@eqnnum }$$\@ignoretrue 
+l.142 \end{equation}
+                    
+Sorry, but I'm not programmed to handle this case;
+I'll just pretend that you didn't ask for it.
+If you're in the wrong mode, you might be able to
+return to the right one by typing `I}' or `I$' or `I\par'.
+
+
+./rl_project.tex:142: LaTeX Error: \begin{itemize} on input line 112 ended by \
+end{equation}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.142 \end{equation}
+                    
+Your command was ignored.
+Type  I <command> <return>  to replace it with another command,
+or  <return>  to continue without it.
+
+./rl_project.tex:142: Missing $ inserted.
+<inserted text> 
+                $
+l.142 \end{equation}
+                    
+I've inserted something that you may have forgotten.
+(See the <inserted text> above.)
+With luck, this will get me unwedged. But if you
+really didn't forget anything, try typing `2' now; then
+my insertion and my current dilemma will both disappear.
+
+
+./rl_project.tex:152: LaTeX Error: Lonely \item--perhaps a missing list environ
+ment.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.152 \item A
+             2C implementation including inclusion of entropy bias and detai...
+
+Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+[3]
+./rl_project.tex:203: Missing $ inserted.
+<inserted text> 
+                $
+l.203 file:///Users/mogul/Downloads/Mastering_
+                                              the_game_of_Go_with_deep_neura...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:205: Missing $ inserted.
+<inserted text> 
+                $
+l.205 
       
 I've inserted a begin-math/end-math symbol since I think
 you left one out. Proceed, with fingers crossed.
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 152--154
+Underfull \hbox (badness 10000) in paragraph at lines 203--205
 \T1/ptm/m/n/10 (+20) file:///Users/mogul/Downloads/Mastering$[]\OML/cmm/m/it/10
  he[]ame[]f[]o[]ith[]eep[]eural[]etworks:pdf \OMS/cmsy/m/n/10 ^^@
  []
 
-./rl_project.tex:155: Missing $ inserted.
+./rl_project.tex:206: Missing $ inserted.
 <inserted text> 
                 $
-l.155 ...om/primo-explore/fulldisplay?docid=44BAT_
+l.206 ...om/primo-explore/fulldisplay?docid=44BAT_
                                                   ALMA_DS5184633880002761&co...
 I've inserted a begin-math/end-math symbol since I think
 you left one out. Proceed, with fingers crossed.
 
-./rl_project.tex:155: Misplaced alignment tab character &.
-l.155 ...play?docid=44BAT_ALMA_DS5184633880002761&
+./rl_project.tex:206: Misplaced alignment tab character &.
+l.206 ...play?docid=44BAT_ALMA_DS5184633880002761&
                                                   context=L&vid=44BAT_VU1&la...
 I can't figure out why you would want to use a tab mark
 here. If you just want an ampersand, the remedy is
@@ -587,8 +776,8 @@ up above has ended a previous alignment prematurely,
 you're probably due for more error messages, and you
 might try typing `S' now just to see what is salvageable.
 
-./rl_project.tex:155: Misplaced alignment tab character &.
-l.155 ...=44BAT_ALMA_DS5184633880002761&context=L&
+./rl_project.tex:206: Misplaced alignment tab character &.
+l.206 ...=44BAT_ALMA_DS5184633880002761&context=L&
                                                   vid=44BAT_VU1&lang=en_US&s...
 I can't figure out why you would want to use a tab mark
 here. If you just want an ampersand, the remedy is
@@ -597,8 +786,8 @@ up above has ended a previous alignment prematurely,
 you're probably due for more error messages, and you
 might try typing `S' now just to see what is salvageable.
 
-./rl_project.tex:155: Misplaced alignment tab character &.
-l.155 ...5184633880002761&context=L&vid=44BAT_VU1&
+./rl_project.tex:206: Misplaced alignment tab character &.
+l.206 ...5184633880002761&context=L&vid=44BAT_VU1&
                                                   lang=en_US&search_scope=CS...
 I can't figure out why you would want to use a tab mark
 here. If you just want an ampersand, the remedy is
@@ -607,8 +796,8 @@ up above has ended a previous alignment prematurely,
 you're probably due for more error messages, and you
 might try typing `S' now just to see what is salvageable.
 
-./rl_project.tex:155: Misplaced alignment tab character &.
-l.155 ...02761&context=L&vid=44BAT_VU1&lang=en_US&
+./rl_project.tex:206: Misplaced alignment tab character &.
+l.206 ...02761&context=L&vid=44BAT_VU1&lang=en_US&
                                                   search_scope=CSCOP_44BAT_D...
 I can't figure out why you would want to use a tab mark
 here. If you just want an ampersand, the remedy is
@@ -617,8 +806,8 @@ up above has ended a previous alignment prematurely,
 you're probably due for more error messages, and you
 might try typing `S' now just to see what is salvageable.
 
-./rl_project.tex:155: Misplaced alignment tab character &.
-l.155 ...lang=en_US&search_scope=CSCOP_44BAT_DEEP&
+./rl_project.tex:206: Misplaced alignment tab character &.
+l.206 ...lang=en_US&search_scope=CSCOP_44BAT_DEEP&
                                                   adaptor=Local%20Search%20E...
 I can't figure out why you would want to use a tab mark
 here. If you just want an ampersand, the remedy is
@@ -627,48 +816,72 @@ up above has ended a previous alignment prematurely,
 you're probably due for more error messages, and you
 might try typing `S' now just to see what is salvageable.
 
-./rl_project.tex:156: Missing $ inserted.
+./rl_project.tex:207: Missing $ inserted.
 <inserted text> 
                 $
-l.156 
+l.207 
       
 I've inserted a begin-math/end-math symbol since I think
 you left one out. Proceed, with fingers crossed.
 
 
-Overfull \hbox (118.9716pt too wide) in paragraph at lines 155--156
+Overfull \hbox (118.9716pt too wide) in paragraph at lines 206--207
 []\T1/ptm/m/n/10 (-20) https://bath-ac-primo.hosted.exlibrisgroup.com/primo-exp
 lore/fulldisplay?docid=44BAT$[]\OML/cmm/m/it/10 LMA[]S\OT1/cmr/m/n/10 518463388
 0002761\OML/cmm/m/it/10 context \OT1/cmr/m/n/10 =
  []
 
-[3] [4] (./rl_project.aux)
+./rl_project.tex:214: Missing $ inserted.
+<inserted text> 
+                $
+l.214 ....nature.com/articles/nature14236?wm=book_
+                                                  wap_0005 - Silver et al 20...
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+./rl_project.tex:215: Missing $ inserted.
+<inserted text> 
+                $
+l.215 
+      
+I've inserted a begin-math/end-math symbol since I think
+you left one out. Proceed, with fingers crossed.
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 214--215
+[]\T1/ptm/m/n/10 (+20) https://www.nature.com/articles/nature14236?wm=book$[]\O
+ML/cmm/m/it/10 ap[]\OT1/cmr/m/n/10 005 \OMS/cmsy/m/n/10 ^^@
+ []
+
+[4] [5] (./rl_project.aux)
 Package rerunfilecheck Info: File `rl_project.out' has not changed.
 (rerunfilecheck)             Checksum: 07B2F39D06E37C5F8B36238350C79ED5;2449.
  ) 
 Here is how much of TeX's memory you used:
- 12733 strings out of 478268
- 204832 string characters out of 5846346
- 549712 words of memory out of 5000000
- 30594 multiletter control sequences out of 15000+600000
- 498874 words of font info for 130 fonts, out of 8000000 for 9000
+ 12767 strings out of 478268
+ 205141 string characters out of 5846346
+ 548427 words of memory out of 5000000
+ 30595 multiletter control sequences out of 15000+600000
+ 500269 words of font info for 150 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 85i,8n,90p,1383b,417s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 85i,8n,90p,1237b,417s stack positions out of 10000i,1000n,20000p,200000b,200000s
 {/usr/local/texlive/2022/texmf-dist/fonts/enc/dvips/base/8r.enc}{/usr/local/t
 exlive/2022/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}</usr/local/tex
-live/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texl
-ive/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texliv
-e/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/
-2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/202
-2/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2022
-/texmf-dist/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive/2022/t
-exmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/local/texlive/2022/texmf-dist/
-fonts/type1/urw/times/utmr8a.pfb></usr/local/texlive/2022/texmf-dist/fonts/type
-1/urw/times/utmri8a.pfb>
-Output written on rl_project.pdf (4 pages, 129671 bytes).
+live/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texl
+ive/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texli
+ve/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive
+/2022/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2
+022/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2022
+/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2022/
+texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2022/te
+xmf-dist/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive/2022/texm
+f-dist/fonts/type1/urw/times/utmb8a.pfb></usr/local/texlive/2022/texmf-dist/fon
+ts/type1/urw/times/utmr8a.pfb></usr/local/texlive/2022/texmf-dist/fonts/type1/u
+rw/times/utmri8a.pfb>
+Output written on rl_project.pdf (5 pages, 157412 bytes).
 PDF statistics:
- 159 PDF objects out of 1000 (max. 8388607)
- 133 compressed objects within 2 object streams
- 28 named destinations out of 1000 (max. 500000)
+ 176 PDF objects out of 1000 (max. 8388607)
+ 145 compressed objects within 2 object streams
+ 31 named destinations out of 1000 (max. 500000)
  34969 words of extra memory for PDF output out of 35830 (max. 10000000)
 
