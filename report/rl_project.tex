@@ -157,8 +157,7 @@ In this implementation, the critic loss is easily implemented using mean squared
 \nabla_{\theta} J(\theta) = \sum_{t=0}^{T-1}-\nabla_{\theta}\log{\pi_{\theta}}(a_{t} | s_{t}) A(s_{t}, a_{t}) + \beta H_{t}
 \end{equation}
 
-The reason for inclduing this term was....
-Entropy (reference) incentvises the actor to output a distribution closer to even. The weiht
+Here $\beta$ is the entropy weight which is a hyperparameter that controls how much the actor loss comprises of the entropy value. The entropy term was included as initial runs showed that even with very small learning rates (1e-5 and below), the agent would very quickly select one action every time, making it incapable of sampling other actions. Thus the agent would always get stuck in a local minima, unable to improve. The entropy term, originally proposed by William and Peng (1991) for use with the REINFORCE algorithm, encourages the actor to output a distribution with higher entropy by penalising low entropy outputs through the loss function. A distribution of actions with higher entropy is a distribution with a high chance of sampling each of the different values. For example, in an environment with four actions such as Breakout, a maximum entropy output distirbution would have a 0.25 probability of selecting each action.. The entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action.
 
 
 \subsection{Async Q-Learning (Peter)}
@@ -214,6 +213,8 @@ https://openai.com/blog/baselines-acktr-a2c/ - A2C vs A3C
 https://www.nature.com/articles/nature14236?wm=book_wap_0005 - Silver et al 2015, human level control
 
 https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f Yoon 2019
+
+William and Peng, 1991 - Entropy maximisation term for regularisation on REINFORCE
 
 \small
 
