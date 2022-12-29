@@ -86,12 +86,33 @@
 
 \subsection{DQN (Mirco)}
 
+
+
 \subsection{A2C (Chris)}
 
-\subsection{Async (Peter)}
+\begin{itemize}
+\item Intro to Policy Gradient Methods
+
+A set of alternative methods to value-based reinforcement methods that can be applied to this problem is policy gradient methods. Whilst value-based methods such as DQN learn values of actions and use these estimates to select actions, policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018).
+
+One commonly used policy parameterisation for discrete action spaces, \emph{soft-max in action preferences}. In selecting actions using a parameterised policy, policy gradient methods use \emph{action preferences} rather than action values. This distinction is crucial as it confers several benefits to policy gradient methods such as the ability to learn a stochastic optimal policy (Sutton and Barto, 2018). One benefit particularly relevant to Breakout is that the policy can approach a deterministic policy which would not be possible if action-values were used (Sutton and Barto, 2018). This is relevant to the problem of breakout as in some situations such as where the ball is close to the paddle, the desired behaviour is for the agent to deterministically move toward the ball to return it and have no chance of moving away from it.
+
+Policy Gradient techniques have seen success in high-profile reinforcement learning breakthroughs in game-playing. Most notably, AlphaGo (Silver et al. 2016) used the REINFORCE algorithm to train the policy network used in the agent.
+
+\item Intro to Actor Critic / A2C / A3C
+
+One Policy-Gradient method that has been shown to be effective on similar tasks to Breakout is the Actor Critic method. Whilst several variations of Actor-Critic methods are used in practice, all Actor-Critic methods are comprised of two key components at their core. The first of these components is an actor which learns a parameterised policy from which the actions are selected. The second component is the critic which learns a value-function to evaluate state-action pairs in order to provide a reinforcement signal to the actor (Graessser and Loon, 2020). Actor Critic chosen as a promising method for this problem over other methods as it offers significant benefits over other policy-gradient methods such as REINFORCE. REINFORCE is a Monte Carlo  algorithm and as such, suffer from problems such as slow learning and issues with online implementation . In contrast, Actor-Critic methods are analogous to TD methods and so avoid these issues (Sutton and Barto, 2018). Avoiding the issue of slow learning is particularly crucial for a complex environment such as Breakout. Training a DQN agent capable of performing above average performance on Atari games required a training time of 8 days on a GPU (Mnih et al. 2016). For a small team and the time window on this assignment, an agent that learned slower than this would not be feasible.
+
+However, Actor-Critic is generally implemented as an on-policy learning algorithm and on-policy learning algorithms are unstable due to temporally correlated data across timesteps (Li, Bing and Yang, 2018). This was addressed by Minh et al. (2016) through the introduction of Asynchronous Advantage Actor-Critic (A3C). In A3C, the asynchronous component is that multiple agents are executed in parallel on multiple instances of an environment with the aim of removing the non-stationarity since agents will be experiencing a variety of different states at any one time step (Minh et al. 2016). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). An algorithm that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C).
+
+Results from OpenAI (2017) showed that A2C may be a more suitable candidate for the problem of Breakout than A3C. Indeed on a set of Atari games, including Breakout, their results showed that A2C outperformed A3C and the noise introduced by the asynchronous implementation failed to deliver any performance benefit (OpenAI, 2017).
+
+\end{itemize}
+
+\subsection{Async Q-Learning (Peter)}
 
 Mnih et al (2016) present asynchronous variants of reinforcement learning algorithms including both Q-Learning and Actor-Critic (A3C).
-The paper claims the asynchronous variants can produce excellent results on single multi-core CPUs with training times of just a few hours. 
+The paper claims the asynchronous variants can produce excellent results on single multi-core CPUs with training times of just a few hours.
 
 Unlike DQN, the asynchronous methods do not require an experience replay memory because multiple agents working in parallel means that the data is fragmented and is sufficiently decorellated.
 
@@ -115,22 +136,22 @@ Like DQN, Async Q-Learning uses an e-greedy policy based on a value network to s
 The weights in the target network are occasionally reset to match the value network.
 
 Where Async Q-Learning differs from DQN is that it runs multiple worker agents in separate processes which share the value and target networks.
-Each worker agent keeps a local copy of the value and target networks to calculate the losses and gradients which it then applies to the shared networks every few steps. 
+Each worker agent keeps a local copy of the value and target networks to calculate the losses and gradients which it then applies to the shared networks every few steps.
 Once the worker agent has updated the shared network, it resets the weights in its own copies to match shared ones.
 As the worker agent takes a number of steps before updating the shared network, the updates are done like mini-batches and the chances of one worker agent overwritting changes being made by another are reduced.
 
-Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time. 
+Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time.
 The different worker agents were also given different epsilon values for their e-greedy policies to further increase the variety of exploration.
 
 The e-greedy policies for the worker agents all started with an epsilon of 1.0, which decayed down to 0.05, 0.1 or 0.1 after 1,000 episodes.
 
-A controller process handles the creation of multiple workers as different processes. 
-The controller gives each worker a queue which allows communication between controller and workers. 
-Each worker starts the atari environment and plays games of breakout. 
+A controller process handles the creation of multiple workers as different processes.
+The controller gives each worker a queue which allows communication between controller and workers.
+Each worker starts the atari environment and plays games of breakout.
 An episode is a complete game, and at the end of each episode the worker sends some details to the controller.
 
-The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy based on the shared value network with an epsilon of 0.01 to provide a measure of how well the policy performs. 
-The graphs in the results section use 
+The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy based on the shared value network with an epsilon of 0.01 to provide a measure of how well the policy performs.
+The graphs in the results section use
 
 TODO : Maybe a diagram of the different processes would help here?
 
@@ -146,7 +167,7 @@ TODO : Maybe a diagram of the different processes would help here?
 \subsection{A2C (Chris)}
 \subsection{Async Q-Learning (Peter)}
 
-TODO : Add images for the training using asynch Q-Learning. 
+TODO : Add images for the training using asynch Q-Learning.
 Show score against number of frames processed.
 
 TODO : add a graph showing 10 hours training of asynch Q-Learning ?
@@ -159,11 +180,11 @@ TODO : add a graph showing 10 hours training of asynch Q-Learning ?
 \subsection{A2C (Chris)}
 \subsection{Async Q-Learning (Peter)}
 
-Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease. 
+Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
 
 Asynch Q-Learning did not produce results in the time scales mentioned by Mnih et al (2016).
 However, matching the scores on the data efficiency and training time graphs from Mnih et al (2016) show that they completed approx 25 epochs in 10 hours.
-A single epoch corresponds to 4 million frames giving 100 million frames in 10 hours. 
+A single epoch corresponds to 4 million frames giving 100 million frames in 10 hours.
 In contrast our implementation for asynch Q-Learning only managed to process 5 million frames in 10 hours, so approximately 20 times slower.
 
 TODO : put these numbers into a suitable table ??
@@ -177,6 +198,19 @@ TODO : put these numbers into a suitable table ??
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
 \section*{References}
+
+
+file:///Users/mogul/Downloads/Mastering_the_game_of_Go_with_deep_neural_networks.pdf - Silver et al. Alpha Go
+Sutton and Barto (2018)
+
+https://bath-ac-primo.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=44BAT_ALMA_DS5184633880002761&context=L&vid=44BAT_VU1&lang=en_US&search_scope=CSCOP_44BAT_DEEP&adaptor=Local%20Search%20Engine&isFrbr=true&tab=local&query=any,contains,actor%20critic&offset=0&pcAvailability=false (Hands on RL Python)
+
+https://arxiv.org/pdf/1602.01783.pdf - Mnih et al.
+
+https://arxiv.org/pdf/1806.06914.pdf - Li, Bing and Yang, 2018
+
+https://openai.com/blog/baselines-acktr-a2c/ - A2C vs A3C
+
 \small
 
 Mnih, V., et al., 2016. Asynchronous Methods for Deep Reinforcement Learning. ArXiv, [Online] 1602.01783.
@@ -198,7 +232,7 @@ Taken from the course notes.
     \State $\text{Initialise } S$
     \For{for each step of episode}
         \State Choose action $A$ in state $S$ using policy derived from  $\hat{q}_{1}\left(S, \cdot, \theta_{1}\right)$
-        \State Take action $A$ observe reward $R$ and next-state $S^{\prime}$ 
+        \State Take action $A$ observe reward $R$ and next-state $S^{\prime}$
         \State Store transition $\left(S, A, R, S^{\prime}\right)$ in $D$
         \For{each transition $\left(S_{j}, A_{j}, R_{j}, S_{j}^{\prime}\right)$ in minibatch sampled from $D$}
             \State $y= \begin{cases}R_{j} & \text { if } S_{j}^{\prime} \text { is terminal } \\ R_{j}+\gamma \max _{a^{\prime}} \hat{q}_{2}\left(S_{j}^{\prime}, a^{\prime}, \boldsymbol{\theta}_{2}\right) & \text { otherwise }\end{cases}$
