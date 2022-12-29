@@ -162,7 +162,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
                 .format(episode_count, episode_reward, steps, window_size, running_average))
     
         # save weights every 100 episodes
-        if episode_count % 100 == 0:
+        if episode_count % 50 == 0:
             critic.save_network_weights(game_type="atari", episode=episode_count)
             actor.save_network_weights(game_type="atari", episode=episode_count)
 

@@ -42,8 +42,8 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
 
     # Load previously trained weights
     if load_weights:
-        actor.load_network_weights(weights_path_override="GoldenRunWeights/atari_actor_weights2700.h5")
-        critic.load_network_weights(weights_path_override="GoldenRunWeights/atari_critic_weights2700.h5")
+        actor.load_network_weights(weights_path_override="GoldenRunWeights/atari_actor_weights2900.h5")
+        critic.load_network_weights(weights_path_override="GoldenRunWeights/atari_critic_weights2900.h5")
 
     # Episode begins here
     for episode_count in range(num_episodes):
@@ -72,7 +72,7 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
             # Inner loop = 1 step from here
             
             # Take action using Actor
-            action = actor.test_predict(prev_network_input, action_space)
+            action = actor.test_predict(prev_network_input, action_space, sample=False)
 
             # Force agent to fire if no steps taken or new life
             if next_action:
