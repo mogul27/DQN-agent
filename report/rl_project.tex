@@ -90,8 +90,7 @@
 
 \subsection{A2C (Chris)}
 
-\begin{itemize}
-\item Intro to Policy Gradient Methods
+Intro to Policy Gradient Methods
 
 A set of alternative methods to value-based reinforcement methods that can be applied to this problem is policy gradient methods. Whilst value-based methods such as DQN learn values of actions and use these estimates to select actions, policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018).
 
@@ -99,11 +98,10 @@ One commonly used policy parameterisation for discrete action spaces, \emph{soft
 
 Policy Gradient techniques have seen success in high-profile reinforcement learning breakthroughs in game-playing. Most notably, AlphaGo (Silver et al. 2016) used the REINFORCE algorithm to train the policy network used in the agent.
 
-\item Intro to Actor Critic
+Intro to Actor Critic
 
 One Policy-Gradient method that has been shown to be effective on similar tasks to Breakout is the Actor Critic method.Actor Critic chosen as a promising method for this problem over other methods as it offers significant benefits over other policy-gradient methods such as REINFORCE. REINFORCE is a Monte Carlo  algorithm and as such, suffer from problems such as slow learning and issues with online implementation. In contrast, Actor-Critic methods are analogous to TD methods and so avoid these issues (Sutton and Barto, 2018). Avoiding the issue of slow learning is particularly crucial for a complex environment such as Breakout. Training a DQN agent capable of performing above average performance on Atari games required a training time of 8 days on a GPU (Mnih et al. 2016). For a small team and the time window on this assignment, an agent that learned slower than this would not be feasible. Variants of Actor-Critic including Asynchronous Advantage Actor-Critic (A3C) and Advantage Actor-Critic (A2C) have shown strong performance on similar tasks to the problem considered in this paper such as in Minh et al. (2016).
 
-\end{itemize}
 
 \subsection{Async Q-Learning (Peter)}
 
@@ -123,19 +121,18 @@ TODO : Weaknesses? Check publications for A3C vs A2C, I've seen comments that sa
 
 \subsection{A2C (Chris)}
 
-\begin{itemize}
 
-\item Basic Actor Critic explanation
+Basic Actor Critic explanation
 
 The second method chosen to solve our specific problem of Atari Breakout is Advantage Actor-Critic (A2C). As discussed in section 2, A2C is a variation of the Actor-Critic method which implements an advantage function. Whilst several variations of Actor-Critic methods are used in practice, all Actor-Critic methods are comprised of two key components at their core: an Actor and a Critic. The role of the actor is to learn a parameterised policy which is used to select the actions. The role of the critic is to provide a reinforcing signal to the actor based on actor performance which is used to update the parameters of the policy. This reinforcement signal is based upon the state-values learned by the critic.
 
-\item Implementation details for Actor Critic networks including architecture and pre-processing
+Implementation details for Actor Critic networks including architecture and pre-processing
 
 In this implementation, the actor policy is parameterised by a convolutional neural network (CNN) where the parameters are the weights of the neural network. The critic is also implemented as a convolutional neural network. The neural network architecture for both the actor and the critic is drawn from the architecture used in Silver et al. (2015) with some notable changes. For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve the softmax in action preferences policy parameterisation described in section 2. This softmax output is sampled in order for the agent to take an action in a given state. The critic network uses the same architecture but uses a single output neuron with linear activation. This output value represents the action-value the critic prescribes to a given state. Both networks also use a RandomUniform initialisation to the output layers with a relatively small range between min and max values (0 - 0.02). This was included as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
 
 The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is the same as that applied in Silver et al. (2015), including greyscale, image cropping and frameskip. The 4 channels of the image are implemented using the StateHistory class. The instance of StateHistory passed to the agent as input includes the current frame and the 3 previous frames. This gives the agent context to the current frame such as the direction the ball is travelling in.
 
-\item Advantage-Actor-Critic explanation
+Advantage-Actor-Critic explanation
 
 The issue with vanilla Actor-Critic as described above is that it is generally implemented as an on-policy learning algorithm and on-policy learning algorithms are unstable due to temporally correlated data across timesteps (Li, Bing and Yang, 2018). This was addressed by Minh et al. (2016) through the introduction of Asynchronous Advantage Actor-Critic (A3C). In A3C, the asynchronous component is that multiple agents are executed in parallel on multiple instances of an environment with the aim of removing the non-stationarity since agents will be experiencing a variety of different states at any one time step (Minh et al. 2016). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). An algorithm that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C).
 
@@ -143,17 +140,16 @@ Results from OpenAI (2017) showed that A2C may be a more suitable candidate for 
 
 In A2C, the inclusion of the Advantage function is motivated in a similar way to inclusion of baselines in other policy gradient methods which is to decrease variance and thus improve the stability of training (Sutton and Barto, 2018). In the case of A2C, the state-value produced by the critic is used as the baseline. The update rule for A2C is given in Yoon (2019) and shown below:
 
-\begin{equation}
-\begin{align*}
 Advantage Actor Critic
 
+\begin{equation}
 \nabla_{\theta} J(\theta) = \sum_{t=0}^{T-1}\nabla_{\theta}\log{\pi_{\theta}}(a_{t} | s_{t}) A(s_{t}, a_{t})
-
-Where:
-
-A(s_{t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamma V_{v}(s_{t+1}) - V_{v}(s_{t})
-\end{align*}
 \end{equation}
+Where:
+\begin{equation}
+A(s_{t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamma V_{v}(s_{t+1}) - V_{v}(s_{t})
+\end{equation}
+
 
 The critic uses a TD update to adjust it's estimate of the value of a state. The intuition behind which is as follows: Each step of the environment, the critic network calculates a value estimate for both the previous state and the next-state that our agent is in. In a similar fashion to TD(0), the critic uses the bootstrapped estimate of the next state, the reward at timestep t+1 and the discount factor to calculate a target value for the state. The mean squared difference between the critic's initial value of the state and the target value is used to update the critic and force it to adjust it's estimate of the state closer to the target value.
 
@@ -163,9 +159,10 @@ The update equation above is calculated for the actor. The first component $\nab
 
 The advantage, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state. Thus, combining this with the above variables, if the advantage is positive, the agent will be told to take more of the action it did take and less of the ones it did not take. Conversely, a negative advantage value tells the agent to take less of the action it did take and more of the actions it did not take.
 
-\item A2C implementation including inclusion of entropy bias and details of custom loss function
+A2C implementation including inclusion of entropy bias and details of custom loss function
 
 In this implementation, the critic loss is easily implemented using mean squared loss of the TD update. However, the loss for the actor is calculated in a custom loss function called \emph{actorcustomloss}. This function implements the update described above aswell as implementing techniques useful for ensuring stability in training such as clipping values. However, the loss function implemented here also includes an entropy regularisation term. This yields a new update equation for the actor
+
 
 \begin{equation}
 \nabla_{\theta} J(\theta) = \sum_{t=0}^{T-1}-\nabla_{\theta}\log{\pi_{\theta}}(a_{t} | s_{t}) A(s_{t}, a_{t}) + \beta H_{t}
@@ -251,7 +248,6 @@ TODO : put these numbers into a suitable table ??
 In the A2C implementation used, the advantage function is calculated using n-step (Where n=1) returns. This only includes one step of actual rewards. Since rewards are generated from a single trajectory they tend to have high variance but are unbiased. However, the state valuation reflects all trajectories seen so far and thus has lower variance but introduces bias. As a result, the value of n controls the bias-variance tradeoff (Graesser and Loon, 2020).Thus, using 1 step returns provides us with a tradeoff of low variance but introduces significant bias through the reliance on state value.
 
 In contrast, Generalised Advantage Estimate (GAE) overcomes the need to set n as a hyperparameter by using an exponentially-weighted average of advantages calculated with different values of n (Schulman et al., 2015). GAE provides a  method by which the low-variance, high-bias one step advantage is most heavily weighted but the lower-weighted contributions from higher values of n still contribute. By tweaking the decay rate of contribution from these higher-variance estimators with higher values of n, GAE allows a more finely controlled tradeoff between bias and variance than the hard cut-off tradeoff in n-step methods (Graesser and Loon, 2020). In comparison to the 1-step method implemented, this is likely to allow a significant reduction in bias whilst controlling the increase in variance. By testing several values for the GAE decay rate, it is possible that a lower-bias, higher-variance solution may exist that performs better than the n-step advantage implementation.
-
 
 \section{Personal Experience}
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
