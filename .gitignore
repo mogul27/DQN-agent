@@ -2,10 +2,9 @@
 /.DS_Store
 /DQN-agent.iml
 /pete_folder/local_backup/
-/pete_folder/local_backup/cb/rl_project.aux
+/report/rl_project.aux
+/report/rl_project.log
+/report/rl_project.out
 /report/rl_project.dvi
-/pete_folder/local_backup/cb/rl_project.log
-/pete_folder/local_backup/cb/rl_project.out
 /report/rl_project.toc
 /report/rl_project.idx
-/pete_folder/local_backup/cb/rl_project.synctex.gz
