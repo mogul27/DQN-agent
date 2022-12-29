@@ -198,13 +198,15 @@ What other techniques can be used to improve further the performances of the 3 a
 
 \subsection{A2C (Chris)}
 
-A2C - generalised advantage estimate as an improvement
+In the A2C implementation used, the advantage function is calculated using n-step (Where n=1) returns. This only includes one step of actual rewards. Since rewards are generated from a single trajectory they tend to have high variance but are unbiased. However, the state valuation reflects all trajectories seen so far and thus has lower variance but introduces bias. As a result, the value of n controls the bias-variance tradeoff (Graesser and Loon, 2020).Thus, using 1 step returns provides us with a tradeoff of low variance but introduces significant bias through the reliance on state value.
+
+In contrast, Generalised Advantage Estimate (GAE) overcomes the need to set n as a hyperparameter by using an exponentially-weighted average of advantages calculated with different values of n (Schulman et al., 2015). GAE provides a  method by which the low-variance, high-bias one step advantage is most heavily weighted but the lower-weighted contributions from higher values of n still contribute. By tweaking the decay rate of contribution from these higher-variance estimators with higher values of n, GAE allows a more finely controlled tradeoff between bias and variance than the hard cut-off tradeoff in n-step methods (Graesser and Loon, 2020). In comparison to the 1-step method implemented, this is likely to allow a significant reduction in bias whilst controlling the increase in variance. By testing several values for the GAE decay rate, it is possible that a lower-bias, higher-variance solution may exist that performs better than the n-step advantage implementation.
+
 
 \section{Personal Experience}
 A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
 In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action. However, the difference between these outcomes was often a very small change. The value used in the implementation was 0.06. A value of 0.075 was found to get stuck very close to an even weighting of actions for all states (0.25 uniformly) and a value of 0.045 would get stuck in a local minima of selecting only one action. Thus, with only a difference of 0.015 either side of the value used, the performance did not just degrade slightly but became practically untrainable.
-
 
 \section*{References}
 
@@ -224,6 +226,7 @@ https://www.nature.com/articles/nature14236?wm=book_wap_0005 - Silver et al 2015
 
 https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f Yoon 2019
 
+Schulman et al. - generalised Advantage Estimate
 William and Peng, 1991 - Entropy maximisation term for regularisation on REINFORCE
 
 \small
