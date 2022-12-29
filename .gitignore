@@ -1,3 +1,7 @@
 /.idea/
 /DQN-agent.iml
 /pete_folder/local_backup/
+/report/rl_project.aux
+/report/rl_project.dvi
+/report/rl_project.log
+/report/rl_project.out
