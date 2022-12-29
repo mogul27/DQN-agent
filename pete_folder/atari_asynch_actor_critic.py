@@ -72,12 +72,15 @@ class ACPolicy:
         # TODO for actor critic need to return the action and the state value, possibly also the probabilities too
         #      so, will need to make the call to q_func before deciding whether to take a random action. We need
         #      the state value.
-        action_probs, _ = self.get_actions_and_state_value(state)
 
         if np.random.uniform() < self.epsilon:
             action = self.random_action()
         else:
-            action = torch.argmax(action_probs).item()
+            # action_probs, _ = self.get_actions_and_state_value(state)
+            # action = torch.argmax(action_probs).item()
+            action_probs, state_value = self.get_actions_and_state_value(state)
+            action_dist = torch.distributions.Categorical(probs=action_probs)
+            action = action_dist.sample().item()
 
         return action
 
@@ -1081,7 +1084,7 @@ if __name__ == '__main__':
         'actions': [0, 1, 2, 3],
         'num_workers': 8,
         'episodes': 5000,
-        'asynch_update_freq': 1000,
+        'asynch_update_freq': 8,
         'sync_beta': 1.0,
         'adam_learning_rate': 0.0005,
         'discount_factor': 0.99,
@@ -1109,9 +1112,9 @@ if __name__ == '__main__':
     options['plot_title'] = f"Asynch Actor Critic Breakout {options['num_workers']} workers"
     # options['start_episode_count'] = 4000
     # options['epsilon'] = 0.1
-    # options['num_workers'] = 1
-    # options['episodes'] = 150
-    # options['stats_every'] = 10
+    options['num_workers'] = 2
+    options['episodes'] = 100
+    options['stats_every'] = 5
     # options['log_level'] = Logger.DEBUG
 
     create_and_run_agent(options)
