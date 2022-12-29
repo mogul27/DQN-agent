@@ -1,4 +1,5 @@
 /.idea/
+/.DS_Store
 /DQN-agent.iml
 /pete_folder/local_backup/
 /pete_folder/local_backup/cb/rl_project.aux
