@@ -116,7 +116,7 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
                 td_target = reward + (1-terminal) * gamma * next_state_value
 
             # Calc extra reward for action at state vs mean reward for action in
-            # that state which is the same as a full TD update to existing value
+            # that state
             adv_function_approx = td_target - prev_state_value
             
             # Update network parameters 

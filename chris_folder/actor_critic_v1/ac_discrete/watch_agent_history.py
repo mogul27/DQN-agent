@@ -42,11 +42,17 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
 
     # Load previously trained weights
     if load_weights:
-        actor.load_network_weights(weights_path_override="GoldenRunWeights/atari_actor_weights2900.h5")
-        critic.load_network_weights(weights_path_override="GoldenRunWeights/atari_critic_weights2900.h5")
+        actor.load_network_weights(weights_path_override="GoldenRunWeights/atari_actor_weights3750.h5")
+        critic.load_network_weights(weights_path_override="GoldenRunWeights/atari_critic_weights3750.h5")
+
+    # Hold episode rewards
+    episode_rewards = []
 
     # Episode begins here
     for episode_count in range(num_episodes):
+
+        # Initialise episode reward
+        episode_reward = 0
 
         # Reset environment
         prev_state, info = wrapped_env.reset()
@@ -83,6 +89,8 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
             next_state, reward, terminal, truncated, info = wrapped_env.step(action)
             next_lives = info['lives']
 
+            episode_reward += reward
+
             # Add next_state into StateHistory and remove oldest state
             state_history.data.pop(0)
             state_history.data.append(next_state)
@@ -98,7 +106,11 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
             prev_lives = copy.deepcopy(next_lives)
             prev_network_input = copy.deepcopy(next_network_input)
 
+        episode_rewards.append(episode_reward)
+        print("Episode Reward: {}".format(episode_reward))
+    
+    print("Average Episode Reward Over {} Episodes: {}".format(num_episodes, np.mean(episode_rewards)))
 
 if __name__ == "__main__":
 
-    main(num_actions=4, num_episodes=10, load_weights=True, sample=True)
+    main(num_actions=4, num_episodes=5, load_weights=True, sample=False)

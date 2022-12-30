@@ -157,6 +157,7 @@ class Actor:
         state = np.expand_dims(state, axis=0)
         # Retrieve the probability distribution of actions for a given state
         softmax_probs = self.network.predict_on_batch(state)[0]
+        print(softmax_probs)
 
         # One hot encode the action taken from possible actions
         actual_action = np.zeros(num_actions)
@@ -166,7 +167,7 @@ class Actor:
         
         # calculate deltheta with Advantage (A(st, at)) according to equation in
         # https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f
-        deltheta_advantage =  adv_function * deltheta + softmax_probs
+        deltheta_advantage = adv_function * deltheta + softmax_probs
         
         # Train agent using custom loss function on state and deltheta_advantage
         self.network.train_on_batch(state, deltheta_advantage)
