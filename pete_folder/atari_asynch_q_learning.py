@@ -350,7 +350,7 @@ class AsyncQLearnerWorker(mp.Process):
         loss = self.q_func_shared.process_batch(states, actions, rewards, next_states, terminal)
 
         try:
-            self.log.trace(f"Sending number of steps to controller {len(experiences)}")
+            # self.log.trace(f"Sending number of steps to controller {len(experiences)}")
             self.grad_update_queue.put(len(experiences))
         except Exception as e:
             self.log.error(f"failed to send steps to grad_update_queue", e)
@@ -541,7 +541,7 @@ class AsyncStatsCollector(mp.Process):
         while read_messages:
             try:
                 msg_code, content = self.messages.get(False)
-                self.log.trace(f"got message {msg_code}")
+                # self.log.trace(f"got message {msg_code}")
                 if msg_code in self.tasks:
                     self.tasks[msg_code] = content
                 else:
@@ -562,8 +562,8 @@ class AsyncStatsCollector(mp.Process):
         if self.tasks['play'] is not None:
             contents = self.tasks['play']
             self.tasks['play'] = None
-            self.log.trace(f"stats_collector: update weights for play "
-                           f"{self.q_func.weights_checksum(contents['weights'])}")
+            # self.log.trace(f"stats_collector: update weights for play "
+            #                f"{self.q_func.weights_checksum(contents['weights'])}")
             self.q_func.set_value_network_weights(contents['weights'])
 
             episode = contents['episode_count']
@@ -743,7 +743,7 @@ class AsyncStatsCollector(mp.Process):
             file.write(f"episode, reward\n")
         self.info_file = self.work_dir / f"info-{time_stamp}.csv"
         with open(self.info_file, 'a') as file:
-            file.write(f"episode, reward, epsilon, value_net_checksum, action_frequency\n")
+            file.write(f"episode,reward,epsilon,action_frequency\n")
 
         # keep track of requests from the controller by recording them in the tasks dict.
         self.tasks = {
@@ -809,18 +809,18 @@ class AsyncQLearningController:
         msg = (msg_code, content)
         for worker, worker_queue in self.workers:
             # send message to each worker
-            self.log.trace(f"sending : {msg_code}")
+            # self.log.trace(f"sending : {msg_code}")
             try:
                 worker_queue.put(msg)
             except Exception as e:
                 self.log.error(f"Queue put failed in controller", e)
-            self.log.trace(f"sent : {msg_code}")
+            # self.log.trace(f"sent : {msg_code}")
 
     def message_stats_collector(self, msg_code, content):
         msg = (msg_code, content)
         stats_queue, worker = self.stats_collector
         try:
-            self.log.trace(f"Send {msg_code} message to stats collector")
+            # self.log.trace(f"Send {msg_code} message to stats collector")
             stats_queue.put(msg)
         except Exception as e:
             self.log.error(f"stats_queue put failed in controller", e)
@@ -896,8 +896,8 @@ class AsyncQLearningController:
                 while True:
                     grad_update_messages.append(grad_update_queue.get(False))
                     grad_updates += 1
-                    self.log.trace(f"got network gradients. Total received={grad_updates}, "
-                                   f"error count={grads_update_errors}")
+                    # self.log.trace(f"got network gradients. Total received={grad_updates}, "
+                    #                f"error count={grads_update_errors}")
 
             except Empty:
                 # Nothing to process, so just carry on
@@ -909,7 +909,7 @@ class AsyncQLearningController:
                                f"error count={grads_update_errors}", e)
 
             if len(grad_update_messages) > 0:
-                self.log.trace(f"accumulate steps from {len(grad_update_messages)} messages")
+                # self.log.trace(f"accumulate steps from {len(grad_update_messages)} messages")
                 for steps in grad_update_messages:
                     total_steps += steps
                     target_sync_counter -= steps
@@ -920,7 +920,7 @@ class AsyncQLearningController:
                 target_sync_counter = self.options.get('target_net_sync_steps', 1)
 
             try:
-                self.log.trace(f"about to read from info queue")
+                # self.log.trace(f"about to read from info queue")
                 info = info_queue.get(False)
                 episode_count += 1
                 self.log_episode_detail(info, total_steps, episode_count)

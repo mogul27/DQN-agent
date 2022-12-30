@@ -123,7 +123,7 @@ if __name__ == '__main__':
 
     read_data_and_plot_rewards(Options({
         'out_dir': "data/async_q_learning/",
-        'data_dir': "data/async_q_learning/lower min eps/",
-        'plot_filename': f'async_q_learning_rewards_breakout 2.png',
-        'plot_title': f"Async Q-Learning Breakout 8 workers"
+        'data_dir': "data/async_q_learning/w16 lr0_0008/",
+        'plot_filename': f'async_q_learning_rewards_breakout 4.png',
+        'plot_title': f"Async Q-Learning Breakout 16 workers"
     }))
