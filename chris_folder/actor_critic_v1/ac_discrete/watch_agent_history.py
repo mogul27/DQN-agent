@@ -78,7 +78,7 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
             # Inner loop = 1 step from here
             
             # Take action using Actor
-            action = actor.test_predict(prev_network_input, action_space, sample=False)
+            action = actor.test_predict(prev_network_input, action_space, sample=sample)
 
             # Force agent to fire if no steps taken or new life
             if next_action:
