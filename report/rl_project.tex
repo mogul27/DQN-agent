@@ -85,25 +85,17 @@
 %A discussion of reinforcement learning methods that may be effective at solving your chosen problem, their strengths and weaknesses for your chosen problem, and any existing results in the scientific literature (or publicly available online) on your chosen problem or similar problems.
 
 \subsection{DQN (Mirco)}
-The Game of Breakout was first mastered by the Deep Q Network agent (DQN) introduced by (reference to article).
-DQN was the first  value based RL method to achieve and surpass human perfornaces at Breakout and it was tehrefore chosen as a one of the three algorithms we implemented.
-(Reference to the article) show how  DQN was able to reach the score xxx.
-This was possible by
-(Reference to DDQN the article)
+The game of Breakout was first mastered by the 
+One category of reinforcement learning methods that can be used to solve the game of Breakout is value-based methods which use function approximation.
+These methods aim to learn a function $f: (S,A) --> R $ to estimates the action-value functions for each state and therefore determine the optimal action to take in the state S.
 
-Details about its components and implementation are given in section 3.
-DQN is an off policy value based method.
-DQN was first introduced by Deep Mind (reference to article) to play and master the Atari games.
-DQN was the first agent capable to match and surpass human performances at Breakout
-+ Strengths:
-DQN uses a target network
-Stable learning 
-Being an off policy methods based on Q learning, DQN uses bootstraping.
+Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to achieve and surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
+Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31 reached in the same testing conditions by a tester professional human player.
 
-+ Weaknesses
-The learning process is slow. The agent takes several milions of frames to reach human performances.
-DQN tends to overestimate the state value fuctions. Argumment little more.
+Earlier attempts, to use nonlinear function approximations to estimate the action value function, were made before the introduction of DQN agent (find reference) but presented limited and unstable learning.
+DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy
 
+DQN, of course, comes with its own limitations, more specifically the generally slow training requiring the agent to play a number of frames in the order of millions to achieve human performances translate is a slow learning process. Moreover, Van Hasselt, Guez and Silver, 2015, showed that, like Q-learning, DQN overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during the bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agents.
 
 
 
