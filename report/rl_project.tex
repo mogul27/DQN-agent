@@ -23,7 +23,9 @@
 \usepackage{amsmath}        % for pseudo code
 \usepackage{algorithm}      % make pseudo code easier
 \usepackage[noend]{algpseudocode}
+\usepackage{graphicx} % For images
 
+\graphicspath{ {./} } % Store images ins same folder
 
 
 
@@ -235,11 +237,13 @@ TODO : Maybe a diagram of the different processes would help here?
 \subsection{DQN (Mirco)}
 \subsection{A2C (Chris)}
 
-(Need to finish Final Run before writing this one)
-Fig 4.1 below shows the performance of the agent averaged peer 10 episodes over T number of episodes.
-(Insert performance graph here)
+\begin{figure}[h]
+\includegraphics[scale=0.2]{A2C4000.png}
+\end{figure}
+\emph{Figure 4.1: 10-episode running average for Breakout A2C agent over 4000 episodes}
 
-As can be seen in Fig 4.1, the
+In the above figure, a running average of performance over a window of 10 episodes is used to provide stability in estimating agent performance. From episode 1000, the agent shows steady and notable improvement, maintaining a running average of over 10 points by episode 2500. The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233. Beyond this point the agent shows evidence of overtraining. The performance significantly deteriorates to the level seen in the earliest episodes. Observing the softmax output from the actor during this period shows the agent is outputting almost the same probabilities for every state with very little change in the distribution between states or between episodes. Thus, the trained agent in the assignment video uses a weight checkpoint from earlier in the training before overtraining.
+
 
 \subsection{Async Q-Learning (Peter)}
 
@@ -255,6 +259,39 @@ TODO : add a graph showing 10 hours training of asynch Q-Learning ?
 \subsection{DQN (Mirco)}
 
 \subsection{A2C (Chris)}
+
+Significant literature exists on the training of different reinforcement agents on Atari learning environments. This section compares the results obtained from this implementation with relevant implementations of similar algorithms in the literature (A2C and A3C) aswell as comparing against a baseline of performance from a professional human game tester.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c | c | c |} 
+ \hline
+ Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
+ \hline
+ 31.8 & 41.4 & 581.6  \\ 
+ \hline
+\end{tabular}
+\end{table}
+\emph{Table 5.1: Col 1- Human performance on Breakout from a profession games tester (Silver et al., 2015). Col2 - Peak performance of A2C implementation in this assignment averaged over 10 episodes. Col3 - Performance of A2C implementation in Wu et al. (2017)  after 50 million timesteps averaged over 100 episodes}
+
+As shown in Table 5.1, using an average over 10 games, the A2C implementation in this assignment was able to significantly outperform a professional humans game tester, reaching 130.19\% of human performance. This was achieved in ~3750 episodes of training which equated to approximately 8 hours training time on CPU. As the implementation outperforms the human baseline, this indicates the agent has solved the chosen problem relatively well and achieves superhuman performance. 
+
+However, the implementation does not come close to achieving the 100 game running average of 581.6 achieved by the A2C implementation in Wu et al. (2017). Thus, whilst the agent does solve the problem effectively enough to achieve superhuman performance, it does not match similar implementations in the literature. The agent in this implementation begins to sink into local minima significantly before the 50 million timeframe point. Interestingly, across several runs, the instability and subsequent local minima appear after a particularly high score (In this case 233), indicating that a potential cause for the deterioration in performance is a very large update to the networks that the agent is unable to properly incorporate. This suggests that, given more time and resources in the assignment, a potential route to match the high scores reached in the literature is to reduce the learning rate and training the agent for significantly longer. Unfortunately, the 50 million time-step training will require the availability of more suitable hardware than is available to the group in this assignment.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c | c|} 
+ \hline
+ A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
+ \hline
+ 3774 & 14464   \\ 
+ \hline
+\end{tabular}
+\end{table}
+\emph{Table 5.2: Col 1- Episodes required for 10 episode average to surpass human performance Col2 - Episodes required for Wu et al. (2017) A2C implementation to surpass human performance over 100 episode average.}
+
+Table 5.2 compounds the idea that the agent implemented in this paper learns quickly but this may be the cause of the instability. Whilst the episode average windows are of different sizes, the difference number of episodes required for the A2C to surpass human performance over the chosen window is relatively large. This suggests that although the agent is unable to match the final performance of similar implementations in the literature, the agent in thi implementation learns quickly. This, again, suggests that with more time and resources, a lower learning rate and a greater training time may allow this implementation to reach scores comparable to those in the literature.
+
 \subsection{Async Q-Learning (Peter)}
 
 Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
@@ -276,10 +313,14 @@ In the A2C implementation used, the advantage function is calculated using n-ste
 
 In contrast, Generalised Advantage Estimate (GAE) overcomes the need to set n as a hyperparameter by using an exponentially-weighted average of advantages calculated with different values of n (Schulman et al., 2015). GAE provides a  method by which the low-variance, high-bias one step advantage is most heavily weighted but the lower-weighted contributions from higher values of n still contribute. By tweaking the decay rate of contribution from these higher-variance estimators with higher values of n, GAE allows a more finely controlled tradeoff between bias and variance than the hard cut-off tradeoff in n-step methods (Graesser and Loon, 2020). In comparison to the 1-step method implemented, this is likely to allow a significant reduction in bias whilst controlling the increase in variance. By testing several values for the GAE decay rate, it is possible that a lower-bias, higher-variance solution may exist that performs better than the n-step advantage implementation.
 
+As indicated in section 5, the evidence from training time and stability in this implementation against the literature also suggests that worthy future work to extend this implementation would be to train the agent for significantly longer with a lower learning rate. However, this may require hardware above what is available to this group for the assignment.
+
 \section{Personal Experience}
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
-In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action. However, the difference between these outcomes was often a very small change. The value used in the implementation was 0.06. A value of 0.075 was found to get stuck very close to an even weighting of actions for all states (0.25 uniformly) and a value of 0.045 would get stuck in a local minima of selecting only one action. Thus, with only a difference of 0.015 either side of the value used, the performance did not just degrade slightly but became practically untrainable.
+\subsection{A2C (Chris)}
+
+In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action. However, the difference between these outcomes was often a very small change. The value used in the implementation was 0.06. A value of 0.075 was found to get stuck very close to an even weighting of actions for all states (0.25 uniformly) and a value of 0.045 would get stuck in a local minima of selecting only one action. Thus, with only a difference of 0.015 either side of the value used, the performance did not just degrade slightly but became practically untrainable. It it, however, possible that this sensitivity may have been mitigated at the cost of increased training time by reducing the learning rate of the networks.
 
 \section*{References}
 
@@ -300,10 +341,12 @@ Sutton and Barto (2018)
 \url{https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f} Yoon 2019
 
 Schulman et al. - generalised Advantage Estimate
+Steinbach (2018) - algorithm https://medium.com/@asteinbach/rl-introduction-simple-actor-critic-for-continuous-actions-4e22afb712
 William and Peng, 1991 - Entropy maximisation term for regularisation on REINFORCE
 
 \url{http://arxiv.org/abs/1509.06461} - van Hasselt, H., Guez, A. and Silver, D., 2015. Deep Reinforcement Learning with Double Q-learning. Available from: 
 
+Wu et al. (2017) - A2C implementation vs A3C
 
 \small
 
@@ -338,11 +381,25 @@ Taken from the course notes.
 \EndFor
 \end{algorithmic}
 
-\subsection*{Appendix B: A2C pseudo-code}
+\subsection*{Appendix B: TD Advantage Actor Critic (A2C) pseudo-code}
 \label{async_a2c_pseudo}
 
+From Steinbach (2018)
+
 \begin{algorithmic}[1]
-\State TODO
+\State Randomly initialise critic network $V^{U}_{\pi}(s)$ and actor network $\pi^{\theta}(s)$ with weights U and $\theta$
+\State Initialise environment $E$
+\For{episode = 1, M}
+\State Receive initial observation state $s_{0}$ from $E$
+\For{t=0, T}
+\State Sample action $a_{t} \sim \pi(a | \mu, \sigma) = \mathcal{N}(a | \mu, \sigma)$ according to current policy
+\State Execute action $a_{t}$ and observe reward $r$ and next state $s_{t+1}$ from $E$
+\State Set TD target $y_{t} = r + \gamma \cdot V^{U}_{\pi}(s_{t+1})$
+\State Update critic by minimising loss: $\delta_{t} = (y_{t} - V^{U}_{\pi}(s))^{2}$
+\State Update actor by minimising loss: $Loss = -\log({\mathcal{N}(a | \mu(s_{t}), \sigma(s_{t}))}) \cdot \delta_{t}$
+\State Update $s_{t} {\leftarrow} s_{t+1}$
+\EndFor
+\EndFor
 \end{algorithmic}
 
 
