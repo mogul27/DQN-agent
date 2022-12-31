@@ -23,9 +23,9 @@
 \usepackage{amsmath}        % for pseudo code
 \usepackage{algorithm}      % make pseudo code easier
 \usepackage[noend]{algpseudocode}
+\usepackage{graphicx} % For images
 
-
-
+\graphicspath{ {./} } % Store images ins same folder
 
 % Give your project report an appropriate title!
 
@@ -103,7 +103,7 @@ DQN, of course, comes with its own limitations, more specifically the generally 
 
 Intro to Policy Gradient Methods
 
-A set of alternative methods to value-based reinforcement methods that can be applied to this problem is policy gradient methods. Whilst value-based methods such as DQN learn values of actions and use these estimates to select actions, policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018).
+A set of alternative methods to value-based reinforcement methods that can be applied to this problem are policy gradient methods. Whilst value-based methods such as DQN learn values of actions and use these estimates to select actions, policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018).
 
 One commonly used policy parameterisation for discrete action spaces, \emph{soft-max in action preferences}. In selecting actions using a parameterised policy, policy gradient methods use \emph{action preferences} rather than action values. This distinction is crucial as it confers several benefits to policy gradient methods such as the ability to learn a stochastic optimal policy (Sutton and Barto, 2018). One benefit particularly relevant to Breakout is that the policy can approach a deterministic policy which would not be possible if action-values were used (Sutton and Barto, 2018). This is relevant to the problem of breakout as in some situations such as where the ball is close to the paddle, the desired behaviour is for the agent to deterministically move toward the ball to return it and have no chance of moving away from it.
 
@@ -112,7 +112,6 @@ Policy Gradient techniques have seen success in high-profile reinforcement learn
 Intro to Actor Critic
 
 One Policy-Gradient method that has been shown to be effective on similar tasks to Breakout is the Actor Critic method.Actor Critic chosen as a promising method for this problem over other methods as it offers significant benefits over other policy-gradient methods such as REINFORCE. REINFORCE is a Monte Carlo  algorithm and as such, suffer from problems such as slow learning and issues with online implementation. In contrast, Actor-Critic methods are analogous to TD methods and so avoid these issues (Sutton and Barto, 2018). Avoiding the issue of slow learning is particularly crucial for a complex environment such as Breakout. Training a DQN agent capable of performing above average performance on Atari games required a training time of 8 days on a GPU (Mnih et al. 2016). For a small team and the time window on this assignment, an agent that learned slower than this would not be feasible. Variants of Actor-Critic including Asynchronous Advantage Actor-Critic (A3C) and Advantage Actor-Critic (A2C) have shown strong performance on similar tasks to the problem considered in this paper such as in Minh et al. (2016).
-
 
 \subsection{Async Q-Learning (Peter)}
 
@@ -154,9 +153,6 @@ DQN uses a q-value network to estimate the action value function in each state a
 
 DQN falls in the cathegory of pseudo grediant methods as the 
 
-
-
-
 \subsection{A2C (Chris)}
 
 
@@ -166,15 +162,15 @@ The second method chosen to solve our specific problem of Atari Breakout is Adva
 
 Implementation details for Actor Critic networks including architecture and pre-processing
 
-In this implementation, the actor policy is parameterised by a convolutional neural network (CNN) where the parameters are the weights of the neural network. The critic is also implemented as a convolutional neural network. The neural network architecture for both the actor and the critic is drawn from the architecture used in Silver et al. (2015) with some notable changes. For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve the softmax in action preferences policy parameterisation described in section 2. This softmax output is sampled in order for the agent to take an action in a given state. The critic network uses the same architecture but uses a single output neuron with linear activation. This output value represents the action-value the critic prescribes to a given state. Both networks also use a RandomUniform initialisation to the output layers with a relatively small range between min and max values (0 - 0.02). This was included as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
+In this implementation, the actor policy is parameterised by a convolutional neural network (CNN) where the parameters are the weights of the neural network. The critic is also implemented as a convolutional neural network. The neural network architecture for both the actor and the critic is drawn from the architecture used in Minh et al. (2015) with some notable changes. For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve the softmax in action preferences policy parameterisation described in section 2. This softmax output is sampled in order for the agent to take an action in a given state. The critic network uses the same architecture but uses a single output neuron with linear activation. This output value represents the action-value the critic prescribes to a given state. Both networks also use a RandomUniform initialisation to the output layers with a relatively small range between min and max values (0 - 0.02). This was included as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
 
-The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is the same as that applied in Silver et al. (2015), including greyscale, image cropping and frameskip. The 4 channels of the image are implemented using the StateHistory class. The instance of StateHistory passed to the agent as input includes the current frame and the 3 previous frames. This gives the agent context to the current frame such as the direction the ball is travelling in.
+The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is the same as that applied in Minh et al. (2015), including greyscale, image cropping and frameskip. The 4 channels of the image are implemented using the StateHistory class. The instance of StateHistory passed to the agent as input includes the current frame and the 3 previous frames. This gives the agent context to the current frame such as the direction the ball is travelling in.
 
 Advantage-Actor-Critic explanation
 
 The issue with vanilla Actor-Critic as described above is that it is generally implemented as an on-policy learning algorithm and on-policy learning algorithms are unstable due to temporally correlated data across timesteps (Li, Bing and Yang, 2018). This was addressed by Minh et al. (2016) through the introduction of Asynchronous Advantage Actor-Critic (A3C). In A3C, the asynchronous component is that multiple agents are executed in parallel on multiple instances of an environment with the aim of removing the non-stationarity since agents will be experiencing a variety of different states at any one time step (Minh et al. 2016). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). An algorithm that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C).
 
-Results from OpenAI (2017) showed that A2C may be a more suitable candidate for the problem of Breakout than A3C. Indeed on a set of Atari games, including Breakout, their results showed that A2C outperformed A3C and the noise introduced by the asynchronous implementation failed to deliver any performance benefit (OpenAI, 2017). As such, A2C is chosen as the Actor-Critic implementation.
+Results from Wu et al. (2017) showed that A2C may be a more suitable candidate for the problem of Breakout than A3C. Indeed on a set of Atari games, including Breakout, their results showed that A2C outperformed A3C and the noise introduced by the asynchronous implementation failed to deliver any performance benefit (Wu et al. 2017). As such, A2C is chosen as the Actor-Critic implementation.
 
 In A2C, the inclusion of the Advantage function is motivated in a similar way to inclusion of baselines in other policy gradient methods which is to decrease variance and thus improve the stability of training (Sutton and Barto, 2018). In the case of A2C, the state-value produced by the critic is used as the baseline. The update rule for A2C is given in Yoon (2019) and shown below:
 
@@ -199,7 +195,7 @@ The advantage, which represents the reinforcement signal from the critic, tells 
 
 A2C implementation including inclusion of entropy bias and details of custom loss function
 
-In this implementation, the critic loss is easily implemented using mean squared loss of the TD update. However, the loss for the actor is calculated in a custom loss function called \emph{actorcustomloss}. This function implements the update described above aswell as implementing techniques useful for ensuring stability in training such as clipping values. However, the loss function implemented here also includes an entropy regularisation term. This yields a new update equation for the actor
+In this implementation, the critic loss is easily implemented using mean squared loss of the TD update. However, the loss for the actor is calculated in a custom loss function called \emph{actorcustomloss}. This function implements the update described above aswell as implementing techniques useful for ensuring stability in training such as clipping values. However, the loss function implemented here also includes an entropy regularisation term. This yields a new update equation for the actor update.
 
 
 \begin{equation}
@@ -247,11 +243,13 @@ TODO : Maybe a diagram of the different processes would help here?
 \subsection{DQN (Mirco)}
 \subsection{A2C (Chris)}
 
-(Need to finish Final Run before writing this one)
-Fig 4.1 below shows the performance of the agent averaged peer 10 episodes over T number of episodes.
-(Insert performance graph here)
+\begin{figure}[h]
+\includegraphics[scale=0.2]{A2C4000.png}
+\end{figure}
+\emph{Figure 4.1: 10-episode running average for Breakout A2C agent over 4000 episodes}
 
-As can be seen in Fig 4.1, the
+In the above figure, a running average of performance over a window of 10 episodes is used to provide stability in estimating agent performance. From episode 1000, the agent shows steady and notable improvement, maintaining a running average of over 10 points by episode 2500. The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233. Beyond this point the agent shows evidence of overtraining. The performance significantly deteriorates to the level seen in the earliest episodes. Observing the softmax output from the actor during this period shows the agent is outputting almost the same probabilities for every state with very little change in the distribution between states or between episodes. Thus, the trained agent in the assignment video uses a weight checkpoint from earlier in the training before overtraining.
+
 
 \subsection{Async Q-Learning (Peter)}
 
@@ -267,6 +265,39 @@ TODO : add a graph showing 10 hours training of asynch Q-Learning ?
 \subsection{DQN (Mirco)}
 
 \subsection{A2C (Chris)}
+
+Significant literature exists on the training of different reinforcement agents on Atari learning environments. This section compares the results obtained from this implementation with relevant implementations of similar algorithms in the literature (A2C and A3C) aswell as comparing against a baseline of performance from a professional human game tester.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c | c | c |} 
+ \hline
+ Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
+ \hline
+ 31.8 & 41.4 & 581.6  \\ 
+ \hline
+\end{tabular}
+\end{table}
+\emph{Table 5.1: Col 1- Human performance on Breakout from a profession games tester (Mnih et al., 2015). Col2 - Peak performance of A2C implementation in this assignment averaged over 10 episodes. Col3 - Performance of A2C implementation in Wu et al. (2017)  after 50 million timesteps averaged over 100 episodes}
+
+As shown in Table 5.1, using an average over 10 games, the A2C implementation in this assignment was able to significantly outperform a professional humans game tester, reaching 130.19\% of human performance. This was achieved in ~3750 episodes of training which equated to approximately 8 hours training time on CPU. As the implementation outperforms the human baseline, this indicates the agent has solved the chosen problem relatively well and achieves superhuman performance. 
+
+However, the implementation does not come close to achieving the 100 game running average of 581.6 achieved by the A2C implementation in Wu et al. (2017). Thus, whilst the agent does solve the problem effectively enough to achieve superhuman performance, it does not match similar implementations in the literature. The agent in this implementation begins to sink into local minima significantly before the 50 million timeframe point. Interestingly, across several runs, the instability and subsequent local minima appear after a particularly high score (In this case 233), indicating that a potential cause for the deterioration in performance is a very large update to the networks that the agent is unable to properly incorporate. This suggests that, given more time and resources in the assignment, a potential route to match the high scores reached in the literature is to reduce the learning rate and training the agent for significantly longer. Unfortunately, the 50 million time-step training will require the availability of more suitable hardware than is available to the group in this assignment.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c | c|} 
+ \hline
+ A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
+ \hline
+ 3774 & 14464   \\ 
+ \hline
+\end{tabular}
+\end{table}
+\emph{Table 5.2: Col 1- Episodes required for 10 episode average to surpass human performance Col2 - Episodes required for Wu et al. (2017) A2C implementation to surpass human performance over 100 episode average.}
+
+Table 5.2 compounds the idea that the agent implemented in this paper learns quickly but this may be the cause of the instability. Whilst the episode average windows are of different sizes, the difference number of episodes required for the A2C to surpass human performance over the chosen window is relatively large. This suggests that although the agent is unable to match the final performance of similar implementations in the literature, the agent in thisimplementation learns quickly. This, again, suggests that with more time and resources, a lower learning rate and a greater training time may allow this implementation to reach scores comparable to those in the literature.
+
 \subsection{Async Q-Learning (Peter)}
 
 Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
@@ -288,33 +319,38 @@ In the A2C implementation used, the advantage function is calculated using n-ste
 
 In contrast, Generalised Advantage Estimate (GAE) overcomes the need to set n as a hyperparameter by using an exponentially-weighted average of advantages calculated with different values of n (Schulman et al., 2015). GAE provides a  method by which the low-variance, high-bias one step advantage is most heavily weighted but the lower-weighted contributions from higher values of n still contribute. By tweaking the decay rate of contribution from these higher-variance estimators with higher values of n, GAE allows a more finely controlled tradeoff between bias and variance than the hard cut-off tradeoff in n-step methods (Graesser and Loon, 2020). In comparison to the 1-step method implemented, this is likely to allow a significant reduction in bias whilst controlling the increase in variance. By testing several values for the GAE decay rate, it is possible that a lower-bias, higher-variance solution may exist that performs better than the n-step advantage implementation.
 
+As indicated in section 5, the evidence from training time and stability in this implementation against the literature also suggests that worthy future work to extend this implementation would be to train the agent for significantly longer with a lower learning rate. However, this may require hardware above what is available to this group for the assignment.
+
 \section{Personal Experience}
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
-In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action. However, the difference between these outcomes was often a very small change. The value used in the implementation was 0.06. A value of 0.075 was found to get stuck very close to an even weighting of actions for all states (0.25 uniformly) and a value of 0.045 would get stuck in a local minima of selecting only one action. Thus, with only a difference of 0.015 either side of the value used, the performance did not just degrade slightly but became practically untrainable.
+\subsection{A2C (Chris)}
+
+In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too low the agent would not move significantly from a random sample across the four action. However, the difference between these outcomes was often a very small change. The value used in the implementation was 0.06. A value of 0.075 was found to get stuck very close to an even weighting of actions for all states (0.25 uniformly) and a value of 0.045 would get stuck in a local minima of selecting only one action. Thus, with only a difference of 0.015 either side of the value used, the performance did not just degrade slightly but became practically untrainable. It it, however, possible that this sensitivity may have been mitigated at the cost of increased training time by reducing the learning rate of the networks.
 
 \section*{References}
 
-
-\url{file:///Users/mogul/Downloads/Mastering_the_game_of_Go_with_deep_neural_networks.pdf} - Silver et al. Alpha Go
-Sutton and Barto (2018)
-
-\url{https://bath-ac-primo.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=44BAT_ALMA_DS5184633880002761&context=L&vid=44BAT_VU1&lang=en_US&search_scope=CSCOP_44BAT_DEEP&adaptor=Local%20Search%20Engine&isFrbr=true&tab=local&query=any,contains,actor%20critic&offset=0&pcAvailability=false} (Hands on RL Python)
-
-\url{https://arxiv.org/pdf/1602.01783.pdf} - Mnih et al.
-
-\url{https://arxiv.org/pdf/1806.06914.pdf} - Li, Bing and Yang, 2018
-
-\url{https://openai.com/blog/baselines-acktr-a2c/} - A2C vs A3C
-
-\url{https://www.nature.com/articles/nature14236?wm=book_wap_0005} - Silver et al 2015, human level control
-
-\url{https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f} Yoon 2019
-
-Schulman et al. - generalised Advantage Estimate
-William and Peng, 1991 - Entropy maximisation term for regularisation on REINFORCE
-
 \url{http://arxiv.org/abs/1509.06461} - van Hasselt, H., Guez, A. and Silver, D., 2015. Deep Reinforcement Learning with Double Q-learning. Available from: 
+
+Graesser, L.H. and Keng, W.L., 2019. \emph{Foundations of deep reinforcement learning: theory and practice in Python}. First edition. Pearson addison-wesley data \& analytics series. Boston: Addison-Wesley.
+
+Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic}. [Online]. Available from: https://doi.org/10.48550/ARXIV.1806.06914 [Accessed 30 December 2022].
+
+Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.A., Veness, J., Bellemare, M.G., Graves, A., Riedmiller, M., Fidjeland, A.K., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S. and Hassabis, D., 2015. Human-level control through deep reinforcement learning. \emph{Nature} [Online], 518(7540), pp.529–533. Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 2022]
+
+Schulman, J., Moritz, P., Levine, S., Jordan, M. and Abbeel, P., 2015. \emph{High-Dimensional Continuous Control Using Generalized Advantage Estimation}  [Online]. Available from: https://doi.org/10.48550/ARXIV.1506.02438 [Accessed 30 December 2022].
+
+Silver, D., Huang, A., Maddison, C.J., Guez, A., Sifre, L., van den Driessche, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot, M., Dieleman, S., Grewe, D., Nham, J., Kalchbrenner, N., Sutskever, I., Lillicrap, T., Leach, M., Kavukcuoglu, K., Graepel, T. and Hassabis, D., 2016. Mastering the game of Go with deep neural networks and tree search. \emph{Nature} [Online], 529(7587), pp.484–489. Available from: https://doi.org/10.1038/nature16961. [Accessed 23rd December 2022]
+
+Steinbach, A. 2018. \emph{RL introduction: simple actor-critic for continuous actions} [Online]. Medium. Available from: https://medium.com/@asteinbach/rl-introduction-simple-actor-critic-for-continuous-actions-4e22afb712 [Accessed 22nd December 2022]
+
+Sutton, R.S. and Barto, A.G., 2018. \emph{Reinforcement learning: an introduction}. Second edition. Adaptive computation and machine learning series. Cambridge, Massachusetts: The MIT Press.
+
+Williams, R.J. and Peng, J., 1991. Function Optimization using Connectionist Reinforcement Learning Algorithms. \emph{Connection Science} [Online], 3(3), pp.241–268. Available from: https://doi.org/10.1080/09540099108946587. [Accessed 27th December 2022]
+
+Wu, Y., Mansimov, E., Liao, S., Grosse, R. and Ba, J., 2017. \emph{Scalable trust-region method for deep reinforcement learning using Kronecker-factored approximation} [Online]. Available from: https://doi.org/10.48550/ARXIV.1708.05144 [Accessed 30 December 2022].
+
+Yoon, C. 2019. \emph{Understanding Actor Critic Methods and A2C} [Online]. Towards Data Science. Available from: https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f [Accessed 24th December 2022]
 
 
 \small
@@ -350,11 +386,25 @@ Taken from the course notes.
 \EndFor
 \end{algorithmic}
 
-\subsection*{Appendix B: A2C pseudo-code}
+\subsection*{Appendix B: TD Advantage Actor Critic (A2C) pseudo-code}
 \label{async_a2c_pseudo}
 
+From Steinbach (2018)
+
 \begin{algorithmic}[1]
-\State TODO
+\State Randomly initialise critic network $V^{U}_{\pi}(s)$ and actor network $\pi^{\theta}(s)$ with weights U and $\theta$
+\State Initialise environment $E$
+\For{episode = 1, M}
+\State Receive initial observation state $s_{0}$ from $E$
+\For{t=0, T}
+\State Sample action $a_{t} \sim \pi(a | \mu, \sigma) = \mathcal{N}(a | \mu, \sigma)$ according to current policy
+\State Execute action $a_{t}$ and observe reward $r$ and next state $s_{t+1}$ from $E$
+\State Set TD target $y_{t} = r + \gamma \cdot V^{U}_{\pi}(s_{t+1})$
+\State Update critic by minimising loss: $\delta_{t} = (y_{t} - V^{U}_{\pi}(s))^{2}$
+\State Update actor by minimising loss: $Loss = -\log({\mathcal{N}(a | \mu(s_{t}), \sigma(s_{t}))}) \cdot \delta_{t}$
+\State Update $s_{t} {\leftarrow} s_{t+1}$
+\EndFor
+\EndFor
 \end{algorithmic}
 
 
