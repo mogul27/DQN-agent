@@ -85,18 +85,16 @@
 %A discussion of reinforcement learning methods that may be effective at solving your chosen problem, their strengths and weaknesses for your chosen problem, and any existing results in the scientific literature (or publicly available online) on your chosen problem or similar problems.
 
 \subsection{DQN (Mirco)}
-The game of Breakout was first mastered by the 
 One category of reinforcement learning methods that can be used to solve the game of Breakout is value-based methods which use function approximation.
-These methods aim to learn a function $f: (S,A) --> R $ to estimates the action-value functions for each state and therefore determine the optimal action to take in the state S.
+These methods aim to learn a function $f: (s,a,\theta) \rightarrow R, s \in S  a \in A \theta \in \mathbb{R}$ to estimates the action-value functions for each state and therefore determine the optimal action $a$ to take in the state $s$.
 
 Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to achieve and surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
 Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31 reached in the same testing conditions by a tester professional human player.
 
 Earlier attempts, to use nonlinear function approximations to estimate the action value function, were made before the introduction of DQN agent (find reference) but presented limited and unstable learning.
-DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy
+DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy.
 
-DQN, of course, comes with its own limitations, more specifically the generally slow training requiring the agent to play a number of frames in the order of millions to achieve human performances translate is a slow learning process. Moreover, Van Hasselt, Guez and Silver, 2015, showed that, like Q-learning, DQN overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during the bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agents.
-
+DQN, of course, comes with its own limitations, more specifically, the generally slow training requiring the agent to play a number of frames in the order of millions to achieve human performances translate is a slow learning process. Hasselt, Guez and Silver, 2016  showed that, like Q-learning, DQN overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during the bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agents.
 
 
 \subsection{A2C (Chris)}
@@ -122,18 +120,44 @@ TODO : Weaknesses? Check publications for A3C vs A2C, I've seen comments that sa
 \section{Method}
 %A description of the method(s) used to solve your chosen problem, an explanation of how these methods work (in your own words), and an explanation of why you chose these specific methods.
 \subsection{DQN (Mirco)}
-Basic points I need to touch upon.
-++ off policy method (behavioral policy and final policy)
-++ it's pseudo gradiant method.
 
-++ presence of q-net and target net: advantage.
-++ experience replay
+As already mentioned in section 2, DQN was derived from Q-Learning where the action-value function is estimated by a non linear function, more precisely, by a deep neural network, namely,
 
-++ Huber loss
+\begin{equation}
+Q(S,A)  = f(S,A,\theta) = \hat{Q}(S,A,\theta)
+\end{equation}
+
+DQN as well as Q-Learning, uses bootstraping to update the action value function as shown in the equatin below. 
+\begin{equation}
+Q(S,A)  =  \hat{Q}(S,A,\theta)  + \alpha * \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta) - \hat{Q}(S,A,\theta) \right)
+\end{equation}
+where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
+ 
+With tabular RL  methods, the learning process is achieved by directly updating the action value function correspondent to each state-action pair while the agent interact with the environment. With function approximation methods , the learning happens by updating the function parameters used to estimate the action value functions.
+More specifically, the function parameters are update in the direction that minimize the loss between the current action value function estimation and its update via bootstraping. The weight update is achieved by standard gradient descent.
+
+\begin{equation}
+\theta_{t+1}  = \theta_{t} + \alpha \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta_{t})  -  \hat{Q}(S,A,\theta_{t}) \right) \nabla_{\theta_{t}} \hat{Q}(S,A,\theta_{t})
+\end{equation}
+
+DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant. 
+
+From the eqaution above it can noted that by changing the network weights at each step $t$, the  action value function $\hat{Q}(S,A,\theta_{t})$ will be updated towards a moving target as the  next state maximum action value functio will also  change.
+
+One of the major DQN innovation, as briefly mentioned in section 2, is the introduction of two separate networks, A q-network to estimate the action value function of state S and a separate target network to estimate the next state action value function. The weights of the target network are kept constatnt for a certain number of iteration before being synched with the q network weight. By using a constant target network, the q-network can be updated towards a stable target removing the cause on instability.
+
+DQN also uses a replay memory buffer to store the last $N$ interaction with the enviroment. At each step, a subset $n$ of expereinced $\in N $  is randomly selected and used to update the q-network weights.  This allows the agent to train on time uncorrelated data.
+
+DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by taking chosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
+The exploration factor $\epsilon$ is reduced from an intial value of 1 to 0.1 over 1M steps and kept constant thereafter.
+
+The loss function used to calcualte the weight updates is the Huber loss  which imporve stability by clipping the gradient of the loss with repsect the estimated action value functio. Mnih et al., 2015 shows how this improves stability during training.
+
+TO FINISH:
+++ network time CNN
+++ input preprocesing
 ++ frame skipping
 ++ state history
-
-DQN 
 
 \subsection{A2C (Chris)}
 
@@ -297,9 +321,11 @@ In the training of the A2C agent, one factor that was both a difficulty and a su
 
 \section*{References}
 
-\url{http://arxiv.org/abs/1509.06461} - van Hasselt, H., Guez, A. and Silver, D., 2015. Deep Reinforcement Learning with Double Q-learning. Available from: 
+
 
 Graesser, L.H. and Keng, W.L., 2019. \emph{Foundations of deep reinforcement learning: theory and practice in Python}. First edition. Pearson addison-wesley data \& analytics series. Boston: Addison-Wesley.
+
+Hasselt, H. van, Guez, A. and Silver, D., 2016. Deep Reinforcement Learning with Double Q-Learning. \emph{Proceedings of the AAAI Conference on Artificial Intelligence} [Online], 30(1). Available from: https://doi.org/10.1609/aaai.v30i1.10295 [Accessed 31 December 2022].
 
 Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic}. [Online]. Available from: https://doi.org/10.48550/ARXIV.1806.06914 [Accessed 30 December 2022].
 
