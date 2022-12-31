@@ -140,7 +140,19 @@ Basic points I need to touch upon.
 ++ frame skipping
 ++ state history
 
-DQN 
+As already mentioned in section 2, DQN is a spin-off from Q-Learning where the action value function is estimated by a non linear function, more precisely, by a deep neural network.
+With tabular RL  methods, the learning process is achieved by directly updating the action value function correspondent to each state-action pair while the agent interact with the environment. For methods which use function approximation, the learning happens by updating the function parameters used to estimate the action value functions. More specifically, the parameters are update in the direction that minimize a pre-defined loss function using the standard gradient descent updates.
+
+** Inser gredient descent udate equation
+
+From the equation above we can see that the term which estimates the  ( talk  about the  instability  introduced by the moving target)
+Methods that assume this future esitimate idependence from the network weight are called pseudo-gredient methods.
+When estimating the action value function for the state-action pair (s,a), its value is updated towards a moving target. (explain better) which causes instability.  
+
+DQN uses a q-value network to estimate the action value function in each state and an target network to bootstrap from the estimated action value function of the next state. This separation allows the q-value network to stably converge toward the updated action value function of each state-action pair.
+
+
+DQN falls in the cathegory of pseudo grediant methods as the 
 
 
 
