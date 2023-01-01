@@ -23,8 +23,10 @@
 \usepackage{amsmath}        % for pseudo code
 \usepackage{algorithm}      % make pseudo code easier
 \usepackage[noend]{algpseudocode}
-\usepackage{graphicx} % For images
 \usepackage{float}
+\usepackage{subcaption}     % specifying captions
+
+\captionsetup[figure]{font={bf,small}, labelsep=period}
 
 \graphicspath{ {./} } % Store images ins same folder
 
@@ -132,7 +134,7 @@ More specifically, the function parameters are update in the direction that mini
 \theta_{t+1} = \theta_{t} + \alpha \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta_{t}) - \hat{Q}(S,A,\theta_{t}) \right) \nabla_{\theta_{t}} \hat{Q}(S,A,\theta_{t})
 \end{equation}
 
-DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant. 
+DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
 
 As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t}$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015, as briefly mentioned in section 2, is the introduction of two separate networks for the action-value function estimation. One q-network to estimate the action value functions of state S and a separate target network to estimate the next state action value functions. The weights of the target network are kept constant for a certain number of iteration before being synched with the q network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
 
@@ -153,7 +155,7 @@ The second method chosen to solve our specific problem of Atari Breakout is Adva
 
 In this implementation, the actor policy is parameterised by a convolutional neural network (CNN) where the parameters are the weights of the neural network. The critic is also implemented as a convolutional neural network. The neural network architecture for both the actor and the critic is drawn from the architecture used in Minh et al. (2015) with some notable changes. For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve a policy parameterisation known as softmax in action preferences (Sutton and Barto, 2018). The softmax output is then sampled in order for the agent to take an action in a given state. The critic network uses the same architecture but uses a single output neuron with linear activation. This output value represents the action-value the critic prescribes to a given state. Both networks also use a RandomUniform initialisation to the output layers with a relatively small range between min and max values (0 - 0.02). This was included as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
 
-The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is the same as that applied in Minh et al. (2015), including greyscale, image cropping and frame-skip. The 4 channels of the image are implemented using the StateHistory class. The instance of StateHistory passed to the agent as input includes the current frame and the 3 previous frames. This gives the agent context to the current frame such as the direction the ball is travelling in.
+The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is similar to that applied in Minh et al. (2015), including greyscale, image cropping and frame-skip. This is implemented using an OpenAIGym provided Atari wrapper that follows the guidelines in Machado et al. (2018) The 4 channels of the image are implemented using the StateHistory class. The instance of StateHistory passed to the agent as input includes the current frame and the 3 previous frames. This gives the agent context to the current frame such as the direction the ball is travelling in.
 
 The issue with vanilla Actor-Critic is that it is usually implemented as an on-policy learning algorithm and on-policy learning algorithms are generally unstable due to temporally correlated data across time-steps (Li, Bing and Yang, 2018). This was addressed by Minh et al. (2016) through the introduction of Asynchronous Advantage Actor-Critic (A3C). In A3C, the asynchronous component is that multiple agents are executed in parallel on multiple instances of an environment with the aim of removing the non-stationarity since agents will be experiencing a variety of different states at any one time step (Minh et al. 2016). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). An algorithm that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C).
 
@@ -171,7 +173,9 @@ A(s_{t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamma V_{v}(s_
 
 The critic uses a TD update to adjust its estimate of the value of a state. The intuition behind which is as follows: Each step of the environment, the critic network calculates a value estimate for both the previous state and the next-state that the agent is in. In a similar fashion to TD(0), the critic uses the bootstrapped estimate of the next state, the reward at timestep t+1 and the discount factor to calculate a target value for the state. The mean squared difference between the critic's initial value of the state and the target value is used to update the critic and force it to adjust its estimate of the state closer to the target value. The target TD value is also used in the calculation of the advantage function and, hence, the actor loss. As seen in the above equation, The advantage function is calculated by subtracting the critic's valuation of the previous state from the target TD update. The intuition behind this is that the difference between these two values represents the value of taking the action that the actor took in that state against the average value of that state (Yoon, 2019). 
 
-The update equation above is calculated for the actor. The first component of the loss function represents the gradient (delta), i.e whether the agent went with or against the current policy, which sets the direction of the update for each action. This tells the actor to move the parameters toward the gradient for more of the current policy behaviour or opposite to the gradient for less of the current policy behaviour (Steinbach, 2018). For a discrete action space, the log term represents the negative log probabilities for action selection. This has the affect of a stronger or weaker reinforcing signal depending on the confidence of the action selection since if the agent chooses an action with a higher certainty, then the negative log probability for that action will be larger. Log probabilities are used in place of actual probabilities since log probabilities do not tend to 0 when multiplied and thus, provide better numerical stability during training. The delta term implementation follows an extended version of the method followed by Wang (2021).
+The update equation above is calculated for the actor. The first component of the loss function represents the gradient (delta), i.e whether the agent went with or against the current policy, which sets the direction of the update for each action. This tells the actor to move the parameters toward the gradient for more of the current policy behaviour or opposite to the gradient for less of the current policy behaviour (Steinbach, 2018). For a discrete action space, the log term represents the negative log probabilities for action selection. 
+
+This has the affect of a stronger or weaker reinforcing signal depending on the confidence of the action selection since if the agent chooses an action with a higher certainty, then the negative log probability for that action will be larger. Log probabilities are used in place of actual probabilities since log probabilities do not tend to 0 when multiplied and thus, provide better numerical stability during training. The delta term implementation follows an extended version of the method followed by Wang (2021).
 
 The advantage, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state. By combining these values, the agent is encouraged to reinforce the current policy if it went with the current policy and the action taken resulted in a value better than the average for that state or the agent went against policy which resulted in a lower value. Conversely, the agent is encouraged to update away from the current policy if actions went with current policy and resulted in a worse value than average for the state or if the agent went against current policy and the resulting value was better than the average for the state.
 
@@ -196,10 +200,11 @@ Each worker agent keeps a local copy of the value and target networks to calcula
 Once the worker agent has updated the shared network, it resets the weights in its own copies to match shared ones.
 As the worker agent takes a number of steps before updating the shared network, the updates are done like mini-batches and the chances of one worker agent overwritting changes being made by another are reduced.
 
+As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements.
+
 Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time.
 The different worker agents were also given different epsilon values for their e-greedy policies to further increase the variety of exploration.
-
-The e-greedy policies for the worker agents all started with an epsilon of 1.0, which decayed down to 0.05, 0.1 or 0.1 after 1,000 episodes.
+Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run a single test meant a thorough examination of the impacts of both of these hyperparameters was not possible.
 
 A controller process handles the creation of multiple workers as different processes.
 The controller gives each worker a queue which allows communication between controller and workers.
@@ -207,7 +212,6 @@ Each worker starts the atari environment and plays games of breakout.
 An episode is a complete game, and at the end of each episode the worker sends some details to the controller.
 
 The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy based on the shared value network with an epsilon of 0.01 to provide a measure of how well the policy performs.
-The graphs in the results section use
 
 TODO : Maybe a diagram of the different processes would help here?
 
@@ -261,10 +265,34 @@ In the above figure, a running average of performance over a window of 10 episod
 
 \subsection{Async Q-Learning (Peter)}
 
-TODO : Add images for the training using asynch Q-Learning.
-Show score against number of frames processed.
+Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
 
-TODO : add a graph showing 10 hours training of asynch Q-Learning ?
+The figure below shows a comparison of the single step Asynch Q-Learning and n-step, using n=8. The n-step approach showed a marked improvement over the single step. TODO : get better example image.
+
+\begin{figure}[H]
+\includegraphics[scale=0.4]{"async_q_learn_n_step"}
+\captionof{figure}{n-step better than single step}
+\end{figure}
+
+The figures below show that the rapid initial learning slows, but with management of the epsilon value in the e-greedy policy, it does continue to improve.
+TODO : Getter neater graphs with matching ranges
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_by_steps"}
+\captionof{figure}{Reward sampled every 25 episodes}
+\end{subfigure}
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_epsilon_values"}
+\captionof{figure}{Rewards every episode for different processes}
+\end{subfigure}
+\captionof{figure}{long run showing gradual improvements}
+\end{figure}
+
+
 
 \section{Discussion}
     
@@ -320,14 +348,11 @@ Table 5.2 compounds the idea that the agent implemented in this paper learns qui
 
 \subsection{Async Q-Learning (Peter)}
 
-Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
+As expected, the Asynch n-step Q-Learning produced better results than single step. However, they did not match the results in the time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch is 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 7.5 million frames in 10 hours, so approximately 13 times slower. 
 
-Asynch Q-Learning did not produce results in the time scales mentioned by Mnih et al (2016).
-However, matching the scores on the data efficiency and training time graphs from Mnih et al (2016) show that they completed approx 25 epochs in 10 hours.
-A single epoch corresponds to 4 million frames giving 100 million frames in 10 hours.
-In contrast our implementation for asynch Q-Learning only managed to process 5 million frames in 10 hours, so approximately 20 times slower.
+That being the case, it gives us an expectation of 2 days processing time to acheive a score in excess of 250. The results we obtained actually compare favourably with those from Mnih et al (2016), with average scores of 25 being acheived in less than half the number of steps.
 
-TODO : put these numbers into a suitable table ??
+TODO : Discussion of all the different hyper parameters?
 
 \section{Future Work}
 
@@ -350,13 +375,13 @@ In the training of the A2C agent, one factor that was both a difficulty and a su
 
 \section*{References}
 
-
-
 Graesser, L.H. and Keng, W.L., 2019. \emph{Foundations of deep reinforcement learning: theory and practice in Python}. First edition. Pearson addison-wesley data \& analytics series. Boston: Addison-Wesley.
 
 Hasselt, H. van, Guez, A. and Silver, D., 2016. Deep Reinforcement Learning with Double Q-Learning. \emph{Proceedings of the AAAI Conference on Artificial Intelligence} [Online], 30(1). Available from: https://doi.org/10.1609/aaai.v30i1.10295 [Accessed 31 December 2022].
 
 Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic}. [Online]. Available from: https://doi.org/10.48550/ARXIV.1806.06914 [Accessed 30 December 2022].
+
+Machado, M.C., Bellemare, M.G., Talvitie, E., Veness, J., Hausknecht, M. and Bowling, M., 2018. Revisiting the Arcade Learning Environment: Evaluation Protocols and Open Problems for General Agents [Online]. \emph{Journal of Artificial Intelligence Research}  Available from: https://www.ijcai.org/proceedings/2018/0787.pdf  [Accessed 31 December 2022].
 
 Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.A., Veness, J., Bellemare, M.G., Graves, A., Riedmiller, M., Fidjeland, A.K., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S. and Hassabis, D., 2015. Human-level control through deep reinforcement learning. \emph{Nature} [Online], 518(7540), pp.529–533. Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 2022]
 
@@ -463,7 +488,43 @@ From Mnih et al (2016)
 
 \end{algorithmic}
 
+\subsection*{Appendix D: Async n-step Q-Learning pseudo-code}
+\label{async_q_n_step_pseudo}
 
-\subsection*{Appendix D: }
+From Mnih et al (2016)
+
+\begin{algorithmic}[1]
+\State \textit{// Assume global shared  $\theta$, $\theta^{-}$, and counter $T = 0$}
+\State Initialise thread step counter $t \gets 0$
+\State Initialise target network weights $\theta^{-} \gets \theta$
+\State Initialise network gradients $d\theta \gets 0$
+\State Initialise thread-specific parameters $\theta^\prime \gets \theta$
+\State Get initial stats $s$
+\While{$T <= T_{\max}$}
+    \State Clear gradients $d\theta \gets 0$
+    \State Synchronize thread-specific parameters $\theta^\prime \gets \theta$
+    \State $t_{start} = t$
+    \State Get state $s_t$
+    \While{not terminal $s_t$ and $t-t_{start}<t_{max}$}
+        \State Take action $a_t$ with $\epsilon$-greedy policy based on $Q\left(s_t,a;\theta^\prime\right)$
+        \State Receive new state $s_{t+1}$ and reward $r_t$
+        \State $t \gets t + 1$
+        \State $T \gets T + 1$
+    \EndWhile
+    \State $R= \begin{cases}0 & \text { for terminal } s_t \\ \max _{a} Q\left(s_t, a, \theta^{-}\right) & \text { for non terminal } s_t\end{cases}$
+    \For{$i \in \{t-1,...,t_{start}\}$}
+        \State $R \gets r_i + \gamma R$
+        \State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
+    \EndFor
+    \State Perform asynchronous update ot $\theta$ using $d\theta$
+    \If{$T$ mod $I_{target} == 0$}
+        \State Update the target network $\theta^{-} \gets \theta$
+    \EndIf
+\EndWhile
+
+\end{algorithmic}
+
+
+\subsection*{Appendix E: }
 
 \end{document}
