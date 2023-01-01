@@ -337,9 +337,9 @@ Table 5.2 compounds the idea that the agent implemented in this paper learns qui
 
 \subsection{Async Q-Learning (Peter)}
 
-As expected, the Asynch n-step Q-Learning produced better results than single step. However, they did not match the time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours. With a single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed 4 million frames in 10 hours, so approximately 25 times slower.
+As expected, the Asynch n-step Q-Learning produced better results than single step. However, they did not match the results in the time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch is 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 7.5 million frames in 10 hours, so approximately 13 times slower. 
 
-That being the case, the results we obtained compare favourably with those from Mnih et al (2016), with average scores of 25 being acheived in less than half the number of steps.
+That being the case, it gives us an expectation of 2 days processing time to acheive a score in excess of 250. The results we obtained actually compare favourably with those from Mnih et al (2016), with average scores of 25 being acheived in less than half the number of steps.
 
 TODO : Discussion of all the different hyper parameters?
 
