@@ -23,7 +23,11 @@
 \usepackage{amsmath}        % for pseudo code
 \usepackage{algorithm}      % make pseudo code easier
 \usepackage[noend]{algpseudocode}
-\usepackage{graphicx} % For images
+\usepackage{graphicx}       % For images
+\usepackage{subcaption}     % specifying captions
+\usepackage{float}          % gives H option to fix figures in place
+
+\captionsetup[figure]{font={bf,small}, labelsep=period}
 
 \graphicspath{ {./} } % Store images ins same folder
 
@@ -200,10 +204,11 @@ Each worker agent keeps a local copy of the value and target networks to calcula
 Once the worker agent has updated the shared network, it resets the weights in its own copies to match shared ones.
 As the worker agent takes a number of steps before updating the shared network, the updates are done like mini-batches and the chances of one worker agent overwritting changes being made by another are reduced.
 
+As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements.
+
 Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time.
 The different worker agents were also given different epsilon values for their e-greedy policies to further increase the variety of exploration.
-
-The e-greedy policies for the worker agents all started with an epsilon of 1.0, which decayed down to 0.05, 0.1 or 0.1 after 1,000 episodes.
+Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run a single test meant a thorough examination of the impacts of both of these hyperparameters was not possible.
 
 A controller process handles the creation of multiple workers as different processes.
 The controller gives each worker a queue which allows communication between controller and workers.
@@ -211,7 +216,6 @@ Each worker starts the atari environment and plays games of breakout.
 An episode is a complete game, and at the end of each episode the worker sends some details to the controller.
 
 The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy based on the shared value network with an epsilon of 0.01 to provide a measure of how well the policy performs.
-The graphs in the results section use
 
 TODO : Maybe a diagram of the different processes would help here?
 
@@ -236,10 +240,34 @@ In the above figure, a running average of performance over a window of 10 episod
 
 \subsection{Async Q-Learning (Peter)}
 
-TODO : Add images for the training using asynch Q-Learning.
-Show score against number of frames processed.
+Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
 
-TODO : add a graph showing 10 hours training of asynch Q-Learning ?
+The figure below shows a comparison of the single step Asynch Q-Learning and n-step, using n=8. The n-step approach showed a marked improvement over the single step. TODO : get better example image.
+
+\begin{figure}[H]
+\includegraphics[scale=0.4]{"async_q_learn_n_step"}
+\captionof{figure}{n-step better than single step}
+\end{figure}
+
+The figures below show that the rapid initial learning slows, but with management of the epsilon value in the e-greedy policy, it does continue to improve.
+TODO : Getter neater graphs with matching ranges
+ 
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_by_steps"}
+\captionof{figure}{Reward sampled every 25 episodes}
+\end{subfigure}
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_epsilon_values"}
+\captionof{figure}{Rewards every episode for different processes}
+\end{subfigure}
+\captionof{figure}{long run showing gradual improvements}
+\end{figure}
+
+
 
 \section{Discussion}
     
@@ -283,14 +311,11 @@ Table 5.2 compounds the idea that the agent implemented in this paper learns qui
 
 \subsection{Async Q-Learning (Peter)}
 
-Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
+As expected, the Asynch n-step Q-Learning produced better results than single step. However, they did not match the time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours. With a single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed 4 million frames in 10 hours, so approximately 25 times slower.
 
-Asynch Q-Learning did not produce results in the time scales mentioned by Mnih et al (2016).
-However, matching the scores on the data efficiency and training time graphs from Mnih et al (2016) show that they completed approx 25 epochs in 10 hours.
-A single epoch corresponds to 4 million frames giving 100 million frames in 10 hours.
-In contrast our implementation for asynch Q-Learning only managed to process 5 million frames in 10 hours, so approximately 20 times slower.
+That being the case, the results we obtained compare favourably with those from Mnih et al (2016), with average scores of 25 being acheived in less than half the number of steps.
 
-TODO : put these numbers into a suitable table ??
+TODO : Discussion of all the different hyper parameters?
 
 \section{Future Work}
 
@@ -426,7 +451,43 @@ From Mnih et al (2016)
 
 \end{algorithmic}
 
+\subsection*{Appendix D: Async n-step Q-Learning pseudo-code}
+\label{async_q_n_step_pseudo}
 
-\subsection*{Appendix D: }
+From Mnih et al (2016)
+
+\begin{algorithmic}[1]
+\State \textit{// Assume global shared  $\theta$, $\theta^{-}$, and counter $T = 0$}
+\State Initialise thread step counter $t \gets 0$
+\State Initialise target network weights $\theta^{-} \gets \theta$
+\State Initialise network gradients $d\theta \gets 0$
+\State Initialise thread-specific parameters $\theta^\prime \gets \theta$
+\State Get initial stats $s$
+\While{$T <= T_{\max}$}
+    \State Clear gradients $d\theta \gets 0$
+    \State Synchronize thread-specific parameters $\theta^\prime \gets \theta$
+    \State $t_{start} = t$
+    \State Get state $s_t$
+    \While{not terminal $s_t$ and $t-t_{start}<t_{max}$}
+        \State Take action $a_t$ with $\epsilon$-greedy policy based on $Q\left(s_t,a;\theta^\prime\right)$
+        \State Receive new state $s_{t+1}$ and reward $r_t$
+        \State $t \gets t + 1$
+        \State $T \gets T + 1$
+    \EndWhile
+    \State $R= \begin{cases}0 & \text { for terminal } s_t \\ \max _{a} Q\left(s_t, a, \theta^{-}\right) & \text { for non terminal } s_t\end{cases}$
+    \For{$i \in \{t-1,...,t_{start}\}$}
+        \State $R \gets r_i + \gamma R$
+        \State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
+    \EndFor
+    \State Perform asynchronous update ot $\theta$ using $d\theta$
+    \If{$T$ mod $I_{target} == 0$}
+        \State Update the target network $\theta^{-} \gets \theta$
+    \EndIf
+\EndWhile
+
+\end{algorithmic}
+
+
+\subsection*{Appendix E: }
 
 \end{document}
