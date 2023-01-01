@@ -23,7 +23,10 @@
 \usepackage{amsmath}        % for pseudo code
 \usepackage{algorithm}      % make pseudo code easier
 \usepackage[noend]{algpseudocode}
-\usepackage{graphicx} % For images
+\usepackage{float}
+\usepackage{subcaption}     % specifying captions
+
+\captionsetup[figure]{font={bf,small}, labelsep=period}
 
 \graphicspath{ {./} } % Store images ins same folder
 
@@ -43,36 +46,26 @@
 % author name.
 
 \author{
-  David S.~Hippocampus
+  Peter Coates
   \\
   Department of Computer Science\\
   University of Bath\\
   Bath, BA2 7AY \\
-  \texttt{hippo@bath.ac.uk} \\
-  %% examples of more authors
+  \texttt{pmc52@bath.ac.uk} \\
 \And
- Christopher Burton
- \\
- Department of Computer Science\\
- University of Bath \\
- BA2 7AY\\
- \texttt{cb2516@bath.ac.uk} \\
-  %% \AND
-  %% Coauthor \\
-  %% Affiliation \\
-  %% Address \\
-  %% \texttt{email} \\
-  %% \And
-  %% Coauthor \\
-  %% Affiliation \\
-  %% Address \\
-  %% \texttt{email} \\
-  %% \And
-  %% Coauthor \\
-  %% Affiliation \\
-  %% Address \\
-  %% \texttt{email} \\
+  Christopher Burton\\
+  Department of Computer Science\\
+  University of Bath \\
+  BA2 7AY\\
+  \texttt{cb2516@bath.ac.uk} \\
+\And
+  Mirco Carciani\\
+  Department of Computer Science\\
+  University of Bath \\
+  BA2 7AY\\
+  \texttt{mc2886@bath.ac.uk} \\
 }
+
 
 \begin{document}
 
@@ -131,7 +124,7 @@ Q(S,A)  = f(S,A,\theta) = \hat{Q}(S,A,\theta)
 
 DQN as well as Q-Learning, uses bootstraping to update the action value function as shown in the equatin below. 
 \begin{equation}
-Q(S,A)  =  \hat{Q}(S,A,\theta)  + \alpha * \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta) - \hat{Q}(S,A,\theta) \right)
+\hat{Q}(S,A,\theta)  =  \hat{Q}(S,A,\theta)  + \alpha * \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta) - \hat{Q}(S,A,\theta) \right)
 \end{equation}
 where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
  
@@ -142,24 +135,19 @@ More specifically, the function parameters are update in the direction that mini
 \theta_{t+1}  = \theta_{t} + \alpha \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta_{t})  -  \hat{Q}(S,A,\theta_{t}) \right) \nabla_{\theta_{t}} \hat{Q}(S,A,\theta_{t})
 \end{equation}
 
-DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant. 
+DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
 
-From the eqaution above it can noted that by changing the network weights at each step $t$, the  action value function $\hat{Q}(S,A,\theta_{t})$ will be updated towards a moving target as the  next state maximum action value functio will also  change.
+As a resut of the weights upate at each step $t$, the  action-value function estimation $\hat{Q}(S,A,\theta_{t})$ is  updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t}$ will also change. One of the major breakthrous  introduced by Mnih et al., 2015, as briefly mentioned in section 2, is the introduction of two separate networks for the action-value function estimation. One q-network to estimate the action value functions of state S and a separate target network to estimate the next state action value functions. The weights of the target network are kept constatnt for a certain number of iteration before being synched with the q network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
 
-One of the major DQN innovation, as briefly mentioned in section 2, is the introduction of two separate networks, A q-network to estimate the action value function of state S and a separate target network to estimate the next state action value function. The weights of the target network are kept constatnt for a certain number of iteration before being synched with the q network weight. By using a constant target network, the q-network can be updated towards a stable target removing the cause on instability.
-
-DQN also uses a replay memory buffer to store the last $N$ interaction with the enviroment. At each step, a subset $n$ of expereinced $\in N $  is randomly selected and used to update the q-network weights.  This allows the agent to train on time uncorrelated data.
+DQN also uses a replay memory buffer to store the last $N$ interaction with the enviroment. At each step, a subset $n$ of expereinced $\in N $  is randomly selected and used to update the q-network weights using equations 3.  This allows the agent to train on time uncorrelated data. Each experience stored in the replay buffer comprises of the the intial state $S$, the action $A$ taken while in state S, the given reward $R$ and the resulting next state $S'$ along an additional boolean flag which indicates whether or not $S'$ is a terminal state.
 
 DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by taking chosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
 The exploration factor $\epsilon$ is reduced from an intial value of 1 to 0.1 over 1M steps and kept constant thereafter.
 
 The loss function used to calcualte the weight updates is the Huber loss  which imporve stability by clipping the gradient of the loss with repsect the estimated action value functio. Mnih et al., 2015 shows how this improves stability during training.
 
-TO FINISH:
-++ network time CNN
-++ input preprocesing
-++ frame skipping
-++ state history
+Two identical CNN are used as function approximations for the Q values, whose input are the raw pixel data outputed by the enviroments. Preprocessing is applied to the inpout image to reduce the amount of computation. More specifically, the image is cropped, resised to 84x84 pixel and coverted to grey scale. To give the CNN the information about the ball trajectory, the state S is a concatenation of 4 consecutive states experienced by the agent. The output of the CNN are the Q values for each action available in state S.
+
 
 \subsection{A2C (Chris)}
 
@@ -212,10 +200,11 @@ Each worker agent keeps a local copy of the value and target networks to calcula
 Once the worker agent has updated the shared network, it resets the weights in its own copies to match shared ones.
 As the worker agent takes a number of steps before updating the shared network, the updates are done like mini-batches and the chances of one worker agent overwritting changes being made by another are reduced.
 
+As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements.
+
 Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time.
 The different worker agents were also given different epsilon values for their e-greedy policies to further increase the variety of exploration.
-
-The e-greedy policies for the worker agents all started with an epsilon of 1.0, which decayed down to 0.05, 0.1 or 0.1 after 1,000 episodes.
+Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run a single test meant a thorough examination of the impacts of both of these hyperparameters was not possible.
 
 A controller process handles the creation of multiple workers as different processes.
 The controller gives each worker a queue which allows communication between controller and workers.
@@ -223,7 +212,6 @@ Each worker starts the atari environment and plays games of breakout.
 An episode is a complete game, and at the end of each episode the worker sends some details to the controller.
 
 The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy based on the shared value network with an epsilon of 0.01 to provide a measure of how well the policy performs.
-The graphs in the results section use
 
 TODO : Maybe a diagram of the different processes would help here?
 
@@ -236,6 +224,38 @@ TODO : Maybe a diagram of the different processes would help here?
 %how do they compare  with respect to a human player
 
 \subsection{DQN (Mirco)}
+%% Explain the differete experiements
+%% PLot the graphs evaluation vs
+
+Different DQN agent with differet replay buffer size as well as different ways to choose the experiences to replay were tested for 7 milion Frames. The picture below shows the test score trajectories of 4 different DQN agent cofigurations.
+
+\begin{figure}[H]
+ \includegraphics[scale=0.5]{DQNAgentComparison.PNG}
+ \caption[width=0.7\textwidth]{DQN agent performances comparison over 7M frames. DQN1: N=200k, random experience replay selection. DQN2: N=1M, random experience replay selection. DQN3: N=200k, half prioritized experience replay selection. DQN5: N=500k, full prioritized experience replay selection.}
+ \label{fig:DQNAgentComparison}
+\end{figure}
+
+Becasue of amount ot time required to train multiple agent, The traning process was then resumed until 24M frameswith DQ2 agent only.  DQN2 was chosen for two main reasons. DQN2 hiperparameters mimim the hiperparameters used by xxx which gives a clear baseline for performance comparison. Although the performances between DQN1, DQN2 and DQN3 agents do slighly vary, there is not clear cut winner. DQN4 does seem to perform the worse between the  tested configuarions. Mor details are given in section 5
+
+\begin{figure}[H]
+ \includegraphics[scale=0.5]{DQNTestScore.PNG}
+ \caption[width=0.7\textwidth]{DQN2 test score over 24M frames}
+ \label{fig:DQNTestScore}
+\end{figure}
+
+Figure \ref{fig:DQNAgentComparison} and figure \ref{fig:DQNTestScore} report the test score which is the simple average over 10 games with where the exploration factor $\epsilon$  is set to 0 to obtain a deterministic policy.
+
+\ref{fig:DQNMovAvg}  below shows the training score moving average over 10 games in blue. The green trajectory is the decaying expploration factor $\epsilon$
+
+\begin{figure}[H]
+ \includegraphics[scale=0.65]{DQNMovAvgTraining.PNG}
+ \caption[width=0.7\textwidth]{}
+ \label{fig:DQNMovAvg}
+\end{figure}
+
+
+
+
 \subsection{A2C (Chris)}
 
 \begin{figure}[h]
@@ -248,10 +268,34 @@ In the above figure, a running average of performance over a window of 10 episod
 
 \subsection{Async Q-Learning (Peter)}
 
-TODO : Add images for the training using asynch Q-Learning.
-Show score against number of frames processed.
+Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
 
-TODO : add a graph showing 10 hours training of asynch Q-Learning ?
+The figure below shows a comparison of the single step Asynch Q-Learning and n-step, using n=8. The n-step approach showed a marked improvement over the single step. TODO : get better example image.
+
+\begin{figure}[H]
+\includegraphics[scale=0.4]{"async_q_learn_n_step"}
+\captionof{figure}{n-step better than single step}
+\end{figure}
+
+The figures below show that the rapid initial learning slows, but with management of the epsilon value in the e-greedy policy, it does continue to improve.
+TODO : Getter neater graphs with matching ranges
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_by_steps"}
+\captionof{figure}{Reward sampled every 25 episodes}
+\end{subfigure}
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.4]{"async_q_learn_best_epsilon_values"}
+\captionof{figure}{Rewards every episode for different processes}
+\end{subfigure}
+\captionof{figure}{long run showing gradual improvements}
+\end{figure}
+
+
 
 \section{Discussion}
     
@@ -295,14 +339,11 @@ Table 5.2 compounds the idea that the agent implemented in this paper learns qui
 
 \subsection{Async Q-Learning (Peter)}
 
-Initial results were encouraging, but the performance tended to level off quite quickly and often started to decrease.
+As expected, the Asynch n-step Q-Learning produced better results than single step. However, they did not match the results in the time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch is 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 7.5 million frames in 10 hours, so approximately 13 times slower. 
 
-Asynch Q-Learning did not produce results in the time scales mentioned by Mnih et al (2016).
-However, matching the scores on the data efficiency and training time graphs from Mnih et al (2016) show that they completed approx 25 epochs in 10 hours.
-A single epoch corresponds to 4 million frames giving 100 million frames in 10 hours.
-In contrast our implementation for asynch Q-Learning only managed to process 5 million frames in 10 hours, so approximately 20 times slower.
+That being the case, it gives us an expectation of 2 days processing time to acheive a score in excess of 250. The results we obtained actually compare favourably with those from Mnih et al (2016), with average scores of 25 being acheived in less than half the number of steps.
 
-TODO : put these numbers into a suitable table ??
+TODO : Discussion of all the different hyper parameters?
 
 \section{Future Work}
 
@@ -438,7 +479,43 @@ From Mnih et al (2016)
 
 \end{algorithmic}
 
+\subsection*{Appendix D: Async n-step Q-Learning pseudo-code}
+\label{async_q_n_step_pseudo}
 
-\subsection*{Appendix D: }
+From Mnih et al (2016)
+
+\begin{algorithmic}[1]
+\State \textit{// Assume global shared  $\theta$, $\theta^{-}$, and counter $T = 0$}
+\State Initialise thread step counter $t \gets 0$
+\State Initialise target network weights $\theta^{-} \gets \theta$
+\State Initialise network gradients $d\theta \gets 0$
+\State Initialise thread-specific parameters $\theta^\prime \gets \theta$
+\State Get initial stats $s$
+\While{$T <= T_{\max}$}
+    \State Clear gradients $d\theta \gets 0$
+    \State Synchronize thread-specific parameters $\theta^\prime \gets \theta$
+    \State $t_{start} = t$
+    \State Get state $s_t$
+    \While{not terminal $s_t$ and $t-t_{start}<t_{max}$}
+        \State Take action $a_t$ with $\epsilon$-greedy policy based on $Q\left(s_t,a;\theta^\prime\right)$
+        \State Receive new state $s_{t+1}$ and reward $r_t$
+        \State $t \gets t + 1$
+        \State $T \gets T + 1$
+    \EndWhile
+    \State $R= \begin{cases}0 & \text { for terminal } s_t \\ \max _{a} Q\left(s_t, a, \theta^{-}\right) & \text { for non terminal } s_t\end{cases}$
+    \For{$i \in \{t-1,...,t_{start}\}$}
+        \State $R \gets r_i + \gamma R$
+        \State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
+    \EndFor
+    \State Perform asynchronous update ot $\theta$ using $d\theta$
+    \If{$T$ mod $I_{target} == 0$}
+        \State Update the target network $\theta^{-} \gets \theta$
+    \EndIf
+\EndWhile
+
+\end{algorithmic}
+
+
+\subsection*{Appendix E: }
 
 \end{document}
