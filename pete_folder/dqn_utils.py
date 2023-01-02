@@ -235,7 +235,7 @@ class Logger:
             self.print('WARN', message)
 
     def error(self, message, e=None):
-        stack_trace = "\n".join(traceback.format_stack()[-6:-1])
+        stack_trace = "\n".join(traceback.format_stack()[-10:-1])
         if self.log_level <= Logger.ERROR:
             self.print('ERROR', f"{message}\n{type(e)}: {e}\n{stack_trace}")
 

@@ -127,7 +127,14 @@ class FunctionApprox:
             self.q_hat_target = q_hat_target
         self.loss_fn = self.create_loss_function()
         self.optimizer = self.create_optimizer()
+        if self.options.get('lr_decay_episodes') is None or self.options.get('lr_decay_factor') is None:
+            self.lr_sched = None
+        else:
+            self.lr_sched = torch.optim.lr_scheduler.StepLR(self.optimizer, self.options.get('lr_decay_episodes'),
+                                                            self.options.get('lr_decay_factor') )
+
         self.discount_factor = self.options.get('discount_factor', 0.99)
+
 
         self.work_dir = self.options.get('work_dir', self.options.get('env_name'))
         if self.work_dir is not None:
@@ -246,16 +253,31 @@ class FunctionApprox:
         """
         # If it's not
         not_terminal = torch.IntTensor([1 if not t else 0 for t in terminal])
-        rewards = torch.Tensor(rewards)
+        # rewards = torch.Tensor(rewards)
         # Make predictions for this batch
         predicted_action_values = self.get_all_action_values(np.array(states))
         next_state_action_values = self.get_max_target_values(np.array(next_states))
+        discounted_rewards = np.zeros(len(rewards))
+        if terminal[-1]:
+            R = 0
+        else:
+            R = next_state_action_values[-1].item()
+        i = len(discounted_rewards)
+        while i > 0:
+            i -= 1
+            R = rewards[i] + self.discount_factor * R
+            discounted_rewards[i] = R
 
-        y = rewards + not_terminal * self.discount_factor * next_state_action_values
+        rewards = torch.Tensor(rewards)
+        y_one_step = rewards + not_terminal * self.discount_factor * next_state_action_values
+        y_n_step = torch.Tensor(discounted_rewards)
         new_action_values = predicted_action_values.clone()
         # new_action_values is a 2D tensor. Each row is the action values for a state.
         # actions contains a list with the action to be updated for each state (row in the new_action_values tensor)
-        new_action_values[torch.arange(new_action_values.size(0)), actions] = y
+        if self.options.get('n-step', False):
+            new_action_values[torch.arange(new_action_values.size(0)), actions] = y_one_step
+        else:
+            new_action_values[torch.arange(new_action_values.size(0)), actions] = y_n_step
 
         # Zero the gradients for every batch!
         self.optimizer.zero_grad()
@@ -274,6 +296,16 @@ class FunctionApprox:
         del losses
         del loss
         return loss_value
+
+    def get_current_lr(self):
+        if self.lr_sched is not None:
+            return self.lr_sched.get_last_lr()[0]
+        else:
+            return self.optimizer.param_groups[0]['lr']
+
+    def end_episode(self):
+        if self.lr_sched is not None:
+            self.lr_sched.step()
 
 
 class AsyncQLearnerWorker(mp.Process):
@@ -495,13 +527,15 @@ class AsyncQLearnerWorker(mp.Process):
                             'epsilon': self.policy.epsilon,
                             'value_network_checksum': self.q_func_shared.get_value_network_checksum(),
                             'target_network_checksum': self.q_func_shared.get_target_network_checksum(),
-                            'avg_loss': sum(losses) / len(losses)
+                            'avg_loss': sum(losses) / len(losses),
+                            'lr': self.q_func_shared.get_current_lr()
                         })
                     except Exception as e:
                         self.log.error(f"worker failed to send to info_queue", e)
                     steps = 0
                     # apply epsilon decay after each episode
                     self.policy.decay_epsilon()
+                    self.q_func_shared.end_episode()
 
                 state, action = next_state, next_action
 
@@ -829,7 +863,7 @@ class AsyncQLearningController:
         time_stamp = time.strftime("%Y%m%d-%H%M%S")
         details_file = self.work_dir / f"episode-detail-{time_stamp}.csv"
         with open(details_file, 'a') as file:
-            file.write(f"date-time,episode,total_steps,reward,pid,steps,avg_loss,value_net,target_net,epsilon\n")
+            file.write(f"date-time,episode,total_steps,reward,pid,steps,avg_loss,value_net,target_net,epsilon,lr\n")
         return details_file
 
     def log_episode_detail(self, episode_detail, total_steps, episode):
@@ -837,7 +871,9 @@ class AsyncQLearningController:
                        f" : reward = {episode_detail['total_reward']} : pid = {episode_detail['worker']}"
                        f" : value_net = {episode_detail['value_network_checksum']:0.4f}"
                        f" : target_net = {episode_detail['target_network_checksum']:0.4f}"
-                       f" : epsilon = {episode_detail['epsilon']:0.4f}")
+                       f" : epsilon = {episode_detail['epsilon']:0.4f}"
+                       f" : lr = {episode_detail['lr']:0.4f}"
+                       )
 
         with open(self.details_file, 'a') as file:
             date_time = time.strftime('%Y/%m/%d-%H:%M:%S')
@@ -849,6 +885,7 @@ class AsyncQLearningController:
                        f",{episode_detail['value_network_checksum']}"
                        f",{episode_detail['target_network_checksum']}"
                        f",{episode_detail['epsilon']}"
+                       f",{episode_detail['lr']}"
                        f"\n")
 
     def train(self):
@@ -989,22 +1026,30 @@ if __name__ == '__main__':
         'num_workers': 8,
         'episodes': 10000,
         'async_update_freq': 8,
-        'target_net_sync_steps': 40000,
+        'target_net_sync_steps': 10000,
         'sync_beta': 1.0,
-        'adam_learning_rate': 0.00025,
+        # 'adam_learning_rate': 0.0012,
+        'adam_learning_rate': 0.0001,
         'discount_factor': 0.99,
         'load_weights': True,
         'save_weights': True,
         'stats_epsilon': 0.01,
         # 'epsilon': 0.1,
-        'epsilon_maxs': [0.1, 0.05, 0.15, 0.1, 0.2, 0.1, 0.05, 0.1],
-        'epsilon_mins': [0.1, 0.05, 0.15, 0.1, 0.2, 0.1, 0.05, 0.1],
+        # 'epsilon_maxs': [0.1, 0.05, 0.15, 0.1, 0.2, 0.1, 0.05, 0.1],
+        # 'epsilon_mins': [0.1, 0.05, 0.15, 0.1, 0.2, 0.1, 0.05, 0.1],
+        # 'epsilon_maxs': [0.1, 0.05, 0.15, 0.1, 0.01, 0.05, 0.05, 0.02],
+        # 'epsilon_mins': [0.1, 0.05, 0.15, 0.1, 0.01, 0.05, 0.05, 0.02],
+        'epsilon_maxs': [0.05, 0.05, 0.02, 0.02, 0.01, 0.01, 0.00, 0.00],
+        'epsilon_mins': [0.05, 0.05, 0.02, 0.02, 0.01, 0.01, 0.00, 0.00],
         # 'epsilon_min': 0.1,
         'epsilon_decay_episodes': 0,
         'stats_every': 25,  # how frequently to collect stats
         'play_avg': 1,      # number of games to average
         'log_level': Logger.INFO,     # debug=1, info=2, warn=3, error=4
         'worker_throttle': 0.001,       # 0.001 seemed OK for 8 workers
+        'n_step':   True,
+        'lr_decay_episodes': 100,
+        'lr_decay_factor': 0.8,
     }
 
     # for lr in [0.01, 0.001, 0.0001]:
@@ -1015,11 +1060,12 @@ if __name__ == '__main__':
     #         options['adam_learning_rate'] = lr
     #         create_and_run_agent(options)
 
-    options['plot_filename'] = f'async_rewards_breakout.png'
-    options['plot_title'] = f"Asynch Q-Learning Breakout {options['num_workers']} workers"
-    # options['start_episode_count'] = 10000
+    # options['plot_filename'] = f'async_rewards_breakout.png'
+    # options['plot_title'] = f"Asynch Q-Learning Breakout {options['num_workers']} workers"
+    # options['start_episode_count'] = 20000
 
     options['num_workers'] = 1
     options['episodes'] = 4
+    # options['log_level'] = Logger.DEBUG
 
     create_and_run_agent(options)
