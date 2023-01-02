@@ -162,11 +162,14 @@ class Actor:
         # One hot encode the action taken from possible actions
         actual_action = np.zeros(num_actions)
         actual_action[action_taken] = 1
+
+        # Process for obtaining deltheta follows an extended version of 
+        # that in Wang (2021) - full reference in project report
+
         # Calculate deltheta (gradient)
         deltheta = actual_action - softmax_probs
         
-        # calculate deltheta with Advantage (A(st, at)) according to equation in
-        # https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f
+        # calculate deltheta with Advantage (A(st, at))
         deltheta_advantage = adv_function * deltheta + softmax_probs
         
         # Train agent using custom loss function on state and deltheta_advantage
@@ -187,7 +190,8 @@ class Actor:
         """
 
         clipped_vals = backend.clip(y_pred, 1e-7, 1-1e-7) # Clip before taking log of probs 
-        # get log of probabilities for numerical stability
+
+        # get log of probabilities for numerical stability and multiply by gradient with advantage
         log_likelihood =  backend.log(clipped_vals) * y_true
         # Include entropy bias to prevent agent always selecting same action 
         entropy = backend.sum(clipped_vals * backend.log(clipped_vals))
