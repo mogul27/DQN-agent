@@ -146,6 +146,7 @@ The exploration factor $\epsilon$ is reduced from an initial value of 1 to 0.1 o
 The loss function used to calculate the weight updates is the Huber loss which improve stability by clipping the gradient of the loss with respect the estimated action value function. Mnih et al., 2015 shows how this improves stability during training.
 
 Two identical CNN are used as function approximations for the Q values, whose input are the raw pixel data outputted by the environments. Preprocessing is applied to the input image to reduce the amount of computation. More specifically, the image is cropped, resized to 84x84 pixel and converted to grey scale. To give the CNN the information about the ball trajectory, the state S is a concatenation of 4 consecutive states experienced by the agent. The output of the CNN are the Q values for each action available in state S.
+Pseudo code is shown in \nameref{dqn_pseudo}
 
  
 
