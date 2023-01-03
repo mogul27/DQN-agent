@@ -50,7 +50,7 @@ class DQN_Agent:
         self.history = Training_History()
         self.step_threshold = 30000
         self.save_folder = folder
-        self.test_eps = 0.05
+        self.test_eps = 0.0
         self.save_each_n_episodes = 50
         self.eval_policy_each_n_episodes = 50
         self.optimizer = Adam(learning_rate=0.00025, clipnorm =1)
@@ -161,10 +161,7 @@ class DQN_Agent:
                 teminal_processed = preprocess.get_terminal()
                 self.memory.add_experience(state[:,:,:,0].reshape(1,84,84,1), action, observation, int(reward), teminal_processed)
                 if self.steps > self.step_threshold  and (self.steps % self.net_update_freq ==0): # update net every 4 steps
-                    if reward > 0:
-                        loss = self.update_q_net_in_batch_GradientTape(batch_size, observation)
-                    else:
-                        loss = self.update_q_net_in_batch_GradientTape(batch_size)
+                    loss = self.update_q_net_in_batch_GradientTape(batch_size, observation)
                 past_state = self.memory.get_state_history(idx= self.memory.idx-1, len_states = self.len_states-1)
                 state = np.concatenate([observation, past_state], axis=3) 
             self.history.update(n_ep, game_score, test_score, episode_steps, self.eps, loss, verbose=1)
@@ -205,7 +202,7 @@ class DQN_Agent:
                 state = np.concatenate([observation, state[0,:,:,0:-1].reshape(1,84,84,self.len_states-1)], axis=3)
             game_score_list.append(game_score)
         avg_score = sum(game_score_list)/n_episodes
-        return avg_score
+        return avg_score, game_score_list
         
     def linear_anneal_eps(self):
         if self.steps < self.step_threshold:
@@ -487,16 +484,12 @@ class Memory:
         self.idx +=1
 
     def get_experiences_dejavu(self, state, batch_size=16, len_state=4):
-        """this method returns the indecis of the the most similar experiences to the current state""" 
-        if self.idx - 300 < self.dejavu_span:
-            short_time_memory = self.buffer2[0 : self.dejavu_span]
-            delta = 0
-        else:
-            short_time_memory = self.buffer2[self.idx-300-self.dejavu_span : self.idx-300] #  -300 is to make sure very recent experience (in the same episode) are not taken into account
-            delta = self.idx-self.dejavu_span-300
-        short_time_memory = np.concatenate([state[0].flatten().reshape(1,7056) for state in short_time_memory], axis = 0)
+        """this method returns the indecis of the the most similar experiences to the current state"""
+        rnd_idx = np.random.randint(len_state, self.get_upper_bound(), batch_size*4)
+        short_time_memory = np.concatenate([self.buffer2[i][0].flatten().reshape(1,7056) for i in rnd_idx], axis = 0)   
+        #short_time_memory = np.concatenate([state[0].flatten().reshape(1,7056) for state in short_time_memory], axis = 0)
         similarity_matrix = cosine_similarity(short_time_memory,state.flatten().reshape(1,7056))
-        idxs = np.argsort(similarity_matrix[:,0])[-1:-1-batch_size:-1] + delta
+        idxs = rnd_idx[np.argsort(similarity_matrix[:,0])[-1:-1-batch_size:-1]]
         return idxs
         
 
