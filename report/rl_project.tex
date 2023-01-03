@@ -136,7 +136,7 @@ DQN, as well as, Q learning belong to a class of algorithm called semi-gradient 
 
 As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t}$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015, as briefly mentioned in section 2, is the introduction of two separate networks for the action-value function estimation. One q-network to estimate the action value functions of state S and a separate target network to estimate the next state action value functions. The weights of the target network are kept constant for a certain number of iteration before being synched with the q network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
 
-DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n$ of experienced $\in N $ is randomly selected and used to update the q-network weights using equations 3. This allows the agent to train on time uncorrelated data. Each experience stored in the replay buffer comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the resulting next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. 
+DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n$ of experienced $\in N $ is selected and used to update the q-network weights using equations 3. This allows the agent to train on time uncorrelated data. Each experience stored in the replay buffer comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the resulting next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random. The second and third strategy utilizes cosine similarity to select and train the agent on the close matching experiences to the observation $S'$ after state $S$ and action $A$. Strategy 2 and 3 differ from the fact that in the former only half of the experiences which will be used for the weights updated are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation the agent would train and update the action value function for the state that would likely resembles the next state in which it will operate taking a more informed decision.
 
 DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by taking choosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
 The exploration factor $\epsilon$ is reduced from an initial value of 1 to 0.1 over 1M steps and kept constant thereafter.
@@ -212,6 +212,7 @@ TODO : Maybe a diagram of the different processes would help here?
 
 Different DQN agent with different configurations of memory buffer size and experience selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations. 
 \begin{figure}[H]
+\centering
 \includegraphics[scale=0.5]{DQNAgentComparison.PNG}
 \caption[width=0.7\textwidth]{DQN agent performances comparison over 7M frames. DQN1: N=200k, random experience replay selection. DQN2: N=1M, random experience replay selection. DQN3: N=200k, half prioritized experience replay selection. DQN5: N=500k, full prioritized experience replay selection.}
 \label{fig:DQNAgentComparison}
@@ -220,20 +221,25 @@ Different DQN agent with different configurations of memory buffer size and expe
 Due to the amount of time required to train multiple agent, the training process was then resumed until 24M frames with DQ2 agent only. DQN2 was chosen for two main reasons. DQN2 hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison. Although the performance between DQN1, DQN2 and DQN3 agents do slightly vary, there is not clear cut winner. DQN4 does seem to perform the worse between the tested configurations. More details are given in section 5.
 
 \begin{figure}[H]
-\includegraphics[scale=0.5]{DQNTestScoreNew.PNG}
-\caption[width=0.7\textwidth]{DQN2 test score calculated as simple average over 10 games with epsilon = 0}
-\label{fig:DQNTestScore}
+\centering
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.46]{DQNTestScore.PNG}
+\captionof{figure}{Test score over 30 games with epsilon = 0}
+\end{subfigure}
+\begin{subfigure}{0.49\textwidth}
+\centering
+\includegraphics[scale=0.46]{DQNMovAvgTraining.png}
+\captionof{figure}{10 games score moving average during training}
+\end{subfigure}
+\caption[width=0.7\textwidth]{DQN2 performances}]
+\label{fig:DQN2}
 \end{figure}
 
-Figure \ref{fig:DQNTestScore} report the median test score calculated as the meadian over 30 games using a determinist policy, namely, $\epsilon = 0$. The faded bands represent the 95\% confidence interval.
+Figure \ref{fig:DQN2}-(a) report the median test score calculated as the median over 30 games using a determinist policy, namely, $\epsilon = 0$. The faded bands represent the 95\% confidence interval.
 
-Figure \ref{fig:DQNMovAvg} shows in blue the moving average of the score over 10 games during training. The green trajectory shows the decaying exploration factor $\epsilon$ over the first 1 million frames. 
+Figure \ref{fig:DQN2}-(b) shows in blue the moving average of the score over 10 games during training. The green trajectory shows the decaying exploration factor $\epsilon$ over the first 1 million frames. 
 
-\begin{figure}[H]
-\includegraphics[scale=0.5]{DQNMovAvgTraining.png}
-\caption[width=0.7\textwidth]{}
-\label{fig:DQNMovAvg}
-\end{figure}
 
 \subsection{A2C (Chris)}
 
@@ -280,18 +286,18 @@ TODO : Getter neater graphs with matching ranges
 %An evaluation of how well you solved your chosen problem.
 
 \subsection{DQN (Mirco)}
-Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 75 around 22M frames. Figure ref{fig:DQNTestScore} shows that although the test score trend appears to be upward, from a simple visual analysis, its first derivative with respect to the number of Frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 236\% of human performances.
+Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to evaluate that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
 \begin{table}[h!]
 \centering
 \begin{tabular}{|c | c | c |} 
  \hline
- Human (Baseline) & DQN Implementation & Mnih et al., (2015) DQN (50M frames) \\ [0.5ex] 
+ Human (Baseline) & DQN Implementation & Mnih et al (2015) DQN (50M frames) \\ [0.5ex] 
  \hline
  31.8 & 51 & 401  \\ 
  \hline
 \end{tabular}
 \end{table}
-
+It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer size and experience replay selection shown in Figure\ref{fig:DQNAgentComparison}. DQN 1 and DQN2 only differ in the size of the memory buffer, 200K vs 1M respectively. No appreciable differences were seen during the first 7 million frames. Comparable results were obtained using cosine similarity experience selection on half of the training sample. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
 
 \subsection{A2C (Chris)}
 
@@ -335,7 +341,8 @@ TODO : Discussion of all the different hyper parameters?
 
 \section{Future Work}
 
-%What other techniques can be used to improve further the performances of the 3 agents.
+\subsection{DQN (Mirco)}
+Experience replay is a key ingredient in the success of DQN agent. In this assignment random experience replay was implement, and, although effective, Schaul et al., 2016 work prove that rank-based and proportional based prioritized experience replay improves the agent performances. Narasimhan et al., 2015 also suggest an alternative method of resampling the experiences. The method separates experience into two buckets, one for positive and one for negative rewards. The experiences are then picked from the two buckets by a fixed ratio.
 
 \subsection{A2C (Chris)}
 
@@ -345,6 +352,9 @@ In contrast, Generalised Advantage Estimate (GAE) overcomes the need to set n as
 
 \section{Personal Experience}
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
+
+\subsection{DQN (Mirco)}
+DQN was quite fiddly to tune. Parameters that seems not to bear a great deal of impotance over the training process actaully affected results quite heavily. For instance, a key factor for the agent learning stability was frequency at which the q-value network are updated. I found that updating the agent policy at every step triggered some form of instabiity and led to the agent to forget all the prevoius learning after few hundred of thousen of frames. By updaing the network weights every four actions the learning was much more stable. The experience batch size also had a somewhat sizable impact on the training outcome. Batches of size 64 presented a more unstable behaviour with  respect of batches of size 32.  
 
 \subsection{A2C (Chris)}
 
@@ -361,6 +371,10 @@ Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic
 Machado, M.C., Bellemare, M.G., Talvitie, E., Veness, J., Hausknecht, M. and Bowling, M., 2018. Revisiting the Arcade Learning Environment: Evaluation Protocols and Open Problems for General Agents [Online]. \emph{Journal of Artificial Intelligence Research}  Available from: https://www.ijcai.org/proceedings/2018/0787.pdf  [Accessed 31 December 2022].
 
 Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.A., Veness, J., Bellemare, M.G., Graves, A., Riedmiller, M., Fidjeland, A.K., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S. and Hassabis, D., 2015. Human-level control through deep reinforcement learning. \emph{Nature} [Online], 518(7540), pp.529–533. Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 2022]
+
+Narasimhan, K., Kulkarni, T. and Barzilay, R., 2015. Language Understanding for Text-based Games using Deep Reinforcement Learning. \emph{Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing} [Online], EMNLP 2015, Lisbon, Portugal. Lisbon, Portugal: Association for Computational Linguistics, pp.1–11. Available from: https://doi.org/10.18653/v1/D15-1001 [Accessed 3 January 2023].
+
+Schaul, T., Quan, J., Antonoglou, I. and Silver, D., 2016. \emph{Prioritized Experience Replay}. Available from: http://arxiv.org/abs/1511.05952.
 
 Schulman, J., Moritz, P., Levine, S., Jordan, M. and Abbeel, P., 2015. \emph{High-Dimensional Continuous Control Using Generalized Advantage Estimation}  [Online]. Available from: https://doi.org/10.48550/ARXIV.1506.02438 [Accessed 30 December 2022].
 
