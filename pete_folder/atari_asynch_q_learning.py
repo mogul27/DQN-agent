@@ -692,7 +692,8 @@ class AsyncStatsCollector(mp.Process):
 
         if total_reward > self.high_score:
             self.high_score = total_reward
-            self.save_weights(episode_count, self.high_score)
+            if self.options.get('save_stats_highscore_weights', default=False):
+                self.save_weights(episode_count, self.high_score)
 
         self.last_n_scores.append(total_reward)
 
@@ -965,8 +966,8 @@ if __name__ == '__main__':
 
     options = {
         'work_dir': 'async/breakout',               # Location for output files
-        # 'env_name': "ALE/Breakout-v5",
-        'env_name': "BreakoutNoFrameskip-v4",
+        'env_name': "ALE/Breakout-v5",
+        # 'env_name': "BreakoutNoFrameskip-v4",
         'actions': [0, 1, 2, 3],
         # 'work_dir': 'async/pong',
         # 'env_name': "ALE/Pong-v5",                # Can easily train with other Atari games.
@@ -983,6 +984,7 @@ if __name__ == '__main__':
         # 'weights_file': "ALE/Breakout-v5.pth",    # defaults to env_name.pth, file saved to work_dir
         'load_weights': False,
         'save_weights': False,                      # If True, weights are saved ever 'stats_every' episodes
+        # 'save_stats_highscore_weights': False,    # If True, stats collector saves weights from high scores
         # Epsilon for worker policies - each worker can have different epsilon, they're picked off the list
         'epsilon_maxs': [0.2, 0.1, 0.1, 0.1, 0.05, 0.02, 0.01, 0.0],
         'epsilon_mins': [0.2, 0.1, 0.1, 0.1, 0.05, 0.02, 0.01, 0.0],
@@ -1005,7 +1007,7 @@ if __name__ == '__main__':
     # Just a basic test, useful to check it works, and debugging.
     options['num_workers'] = 1
     options['episodes'] = 10
-    options['stats_every'] = 2
+    options['stats_every'] = 3
     # options['log_level'] = Logger.DEBUG
 
     create_and_run_agent(options)
