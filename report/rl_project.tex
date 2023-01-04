@@ -74,6 +74,10 @@
 \section{Problem Definition}
 
 % A clear, precise and concise description of your chosen problem, including the states, actions, transition dynamics, and the reward function. You will lose marks for an unclear, incorrect, or incomplete problem definition.
+Breakout, a 2D game. part of the classic Atari 2600 games was chosen as the "problem" to solve for this assignment.
+In the game of Breakout, a player controlls a paddle to bounce a ball against a wall composed by a stack of 6 layers of briks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
+Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right.
+The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Altough Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out what of the avaialbe actions is best to take in each state  to maximize the future reward.  The game can also be played in multi player mode, but for the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen   
 
 \section{Background}
 
@@ -81,10 +85,10 @@
 
 \subsection{DQN (Mirco)}
 One category of reinforcement learning methods that can be used to solve the game of Breakout is value-based methods which use function approximation.
-These methods aim to learn a function $f: (s,a,\theta) \rightarrow R, s \in S  a \in A \theta \in \mathbb{R}$ to estimates the action-value functions for each state and therefore determine the optimal action $a$ to take in the state $s$.
+These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and  $\theta \in \mathbb{R}^n$ to estimates the action-value functions for each state and therefore determine the optimal action $a$ to take in the state $s$.
 
 Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to achieve and surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
-Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31 reached in the same testing conditions by a tester professional human player.
+Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31.8 reached in the same testing conditions by a tester professional human player.
 
 Earlier attempts, to use nonlinear function approximations to estimate the action value function, were made before the introduction of DQN agent (find reference) but presented limited and unstable learning.
 DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy.
@@ -124,25 +128,26 @@ DQN as well as Q-Learning, uses bootstrapping to update the action value functio
 \end{equation}
 where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
 With tabular RL methods, the learning process is achieved by directly updating the action value function correspondent to each state-action pair while the agent interacts with the environment. With function approximation methods, the learning happens by updating the function parameters used to estimate the action value functions.
-More specifically, the function parameters are update in the direction that minimize the loss between the current action value function estimation and its update via bootstrapping. The weight update is achieved by standard gradient descent.
+More specifically, the function parameters are update in the direction that minimize the loss between the current action value function estimation and its update. The weight update is achieved by a single step of gradient descen as described in equation \ref{eqn:weightupdate}.
 
 \begin{equation}
+\label{eqn:weightupdate}
 \theta_{t+1} = \theta_{t} + \alpha \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta_{t}) - \hat{Q}(S,A,\theta_{t}) \right) \nabla_{\theta_{t}} \hat{Q}(S,A,\theta_{t})
 \end{equation}
 
-DQN, as well as, Q learning belong to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation above, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
+DQN, as well as, Q learning belongs to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation \ref{eqn:weightupdate}, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
 
-As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t}$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015, as briefly mentioned in section 2, is the introduction of two separate networks for the action-value function estimation. One q-network to estimate the action value functions of state S and a separate target network to estimate the next state action value functions. The weights of the target network are kept constant for a certain number of iteration before being synched with the q network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
+As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t})$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015 is the introduction of two separate networks during the action-value function estimation. One network, called q-value network, is used to estimate the action value functions of the current state S, while a separate target network is used to estimate the action value functions of the next state $S'$ . The weights of the target network are kept constant for a certain number of iteration before being synched with the q-network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
 
-DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n$ of experienced $\in N $ is selected and used to update the q-network weights using equations 3. This allows the agent to train on time uncorrelated data. Each experience stored in the replay buffer comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the resulting next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random. The second and third strategy utilizes cosine similarity to select and train the agent on the close matching experiences to the observation $S'$ after state $S$ and action $A$. Strategy 2 and 3 differ from the fact that in the former only half of the experiences which will be used for the weights updated are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation the agent would train and update the action value function for the state that would likely resembles the next state in which it will operate taking a more informed decision.
+DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n \in N$ of experiences is selected and used to update the q-network weights using equations \ref{eqn:weightupdate}. This allows the agent to train on time uncorrelated data. Each experience, stored in the replay buffer, comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the  observed next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random from the buffer of capacity $N$. The second and third strategy utilizes cosine similarity to select and train the agent on  close matching experiences to the observation $S'$. these differ from the fact that in the former only half of the experiences are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation the agent would train and update the action value function for the states that would likely resembles the next state in which it will operate allowing for a more informed decision.
 
-DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by taking choosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
+DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by choosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
 The exploration factor $\epsilon$ is reduced from an initial value of 1 to 0.1 over 1M steps and kept constant thereafter.
 
 The loss function used to calculate the weight updates is the Huber loss which improve stability by clipping the gradient of the loss with respect the estimated action value function. Mnih et al., 2015 shows how this improves stability during training.
 
-Two identical CNN are used as function approximations for the Q values, whose input are the raw pixel data outputted by the environments. Preprocessing is applied to the input image to reduce the amount of computation. More specifically, the image is cropped, resized to 84x84 pixel and converted to grey scale. To give the CNN the information about the ball trajectory, the state S is a concatenation of 4 consecutive states experienced by the agent. The output of the CNN are the Q values for each action available in state S.
-Pseudo code is shown in \nameref{dqn_pseudo}
+Two identical CNN are used as function approximations for the Q values. These take as input the raw pixel data outputted by the environments. Preprocessing is applied to the input image to reduce the amount of computation. More specifically, the image is cropped, resized to 84x84 pixel and converted to grey scale. Moreover, to give the CNN the information about the ball trajectory, the state S is a concatenation of 4 consecutive states experienced by the agent. The output of the CNN are the Q values for each action available in state S.
+DQN pseudo-code is shown in \nameref{dqn_pseudo}
 
 \subsection{A2C (Chris)}
 
@@ -206,7 +211,7 @@ The controller keeps track of the total number of episodes completed by all the 
 %% Explain the differete experiements
 %% PLot the graphs evaluation vs
 
-Different DQN agent with different configurations of memory buffer size and experience selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations. 
+Different DQN agents with different configurations of memory capacity and experiencereplay selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations. 
 \begin{figure}[H]
 \centering
 \includegraphics[scale=0.5]{DQNAgentComparison.PNG}
@@ -276,7 +281,7 @@ The figures in \ref{fig:ASYNC1} (a) were generated by the stats process. This us
 %An evaluation of how well you solved your chosen problem.
 
 \subsection{DQN (Mirco)}
-Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to evaluate that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
+Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure \ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to evaluate that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
 \begin{table}[h!]
 \centering
 \begin{tabular}{|c | c | c |} 
@@ -287,7 +292,7 @@ Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We we
  \hline
 \end{tabular}
 \end{table}
-It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer size and experience replay selection shown in Figure\ref{fig:DQNAgentComparison}. DQN 1 and DQN2 only differ in the size of the memory buffer, 200K vs 1M respectively. No appreciable differences were seen during the first 7 million frames. Comparable results were obtained using cosine similarity experience selection on half of the training sample. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
+It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer sizes and experience replay selection methods shown in Figure\ref{fig:DQNAgentComparison}. DQN 1 and DQN2 only differ in the size of the memory buffer, 200K vs 1M respectively. No appreciable differences were seen during the first 7 million frames. Comparable results were obtained selection half of the training samples using cosine similarity. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
 
 \subsection{A2C (Chris)}
 
