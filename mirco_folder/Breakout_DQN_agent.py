@@ -57,6 +57,7 @@ class DQN_Agent:
         self.loss_function = Huber()
         self.net_update_freq =  4
         self.max_score_eval = 0
+        self.use_cosine_simil = False
     
     
     def load_q_net(self, file_name):
@@ -100,6 +101,7 @@ class DQN_Agent:
             self.stepwise_anneal_eps()
 
     def select_action(self, env, state, eps=0.05):
+        """Select an action using e-greedy policy"""
         p = np.random.random()
         if p <= eps:
             action = env.action_space.sample()
@@ -109,6 +111,7 @@ class DQN_Agent:
         return action
 
     def resume_training(self, env, train_frames=100, last_step=0, last_episode=0, last_epsilon=1,  frame_skip = 1):
+        """this methods let you resume training from anyu point in history"""
         self.steps = last_step
         self.eps = last_epsilon
         self.memory.reset_idx(self.steps)
@@ -116,6 +119,7 @@ class DQN_Agent:
         return
 
     def resume_training_from_history(self, env, train_frames=100, frame_skip = 1):
+        """this methods let you resume training from a checkpoint in history"""
         last_episode =  self.history.history['episode'][-1]
         last_step = sum(self.history.history['steps'])
         last_epsilon = self.history.history['episoln'][-1]
@@ -123,6 +127,7 @@ class DQN_Agent:
         return
 
     def train_by_frames(self, env, n_frames=10000, frame_skip = 1, batch_size=32, n_ep=-1):
+        """This method start the train the agent for a given number of frames"""
         preprocess = PreProcessing()
         self.history.start_time()
         test_score = 0
@@ -130,15 +135,20 @@ class DQN_Agent:
         while self.steps <= n_frames:
             n_ep +=1
             self.save_nets_and_history(n_ep)
-            if (self.steps > self.step_threshold) and (n_ep % self.eval_policy_each_n_episodes == 0):
+            # evaluate the agent policy every  "eval_policy_each_n_episodes" steps
+            if (self.steps > self.step_threshold) and (n_ep % self.eval_policy_each_n_episodes == 0): 
                 test_score = self.play(env, 10, 4)
-            if test_score > self.max_score_eval: # save the best performing agent so far
+            # save the best performing agent so far
+            if test_score > self.max_score_eval: 
                 print(f"Saving Best performing agent: New Best score = {test_score}")
                 self.save_q_net(n_ep)
                 self.max_score_eval = test_score
+            # reset enviroment before  starting a new episode
             state, info = env.reset()
             preprocess.reset(info['lives'])
+            # preprocess the obseravtion from the environemnt to feed to the CNN
             state = preprocess.preprocess_state(state)
+            # Create the state with history as a conctenation of subsequent obseravtions
             state = np.concatenate([state, np.zeros((1,84,84,self.len_states-1),dtype=np.uint8)], axis=3)
             terminal =  False
             truncated = False
@@ -147,29 +157,46 @@ class DQN_Agent:
             while not terminal and not truncated:
                 self.steps += 1
                 episode_steps += 1
+                # decay the exploration factor.
                 self.calculate_exploration_factor()
+                # select an action
                 action = self.select_action(env, state, self.eps)
+                # synch the  q-value and target net  weights (each 1000 steps)
                 self.sync_nets()
+                # apply the same action for each skipped frame
                 for _ in range(frame_skip):
+                    # apply the action and observe the next state, reward and terminal state
                     observation, reward, terminal, truncated, info = env.step(action)
+                    # pre process the info outputted by the enviroment
                     preprocess.preprocess_terminal(terminal, info)
                     preprocess.preprocess_reward(reward,info)
                     preprocess.preprocess_lives(info)
                     game_score += reward
                 observation = preprocess.preprocess_state(observation)
-                reward = preprocess.get_reward()
-                teminal_processed = preprocess.get_terminal()
+                # get capped reward. [0,1]
+                reward = preprocess.get_reward() 
+                # create a fake terminal signal for each life lost
+                teminal_processed = preprocess.get_terminal() 
+                # add experience to the memory buffer
                 self.memory.add_experience(state[:,:,:,0].reshape(1,84,84,1), action, observation, int(reward), teminal_processed)
-                if self.steps > self.step_threshold  and (self.steps % self.net_update_freq ==0): # update net every 4 steps
-                    loss = self.update_q_net_in_batch_GradientTape(batch_size, observation)
+                # update network weight each every net_update_freq steps
+                if self.steps > self.step_threshold  and (self.steps % self.net_update_freq ==0): 
+                    if self.use_cosine_simil:
+                        # by passing the observation. cosine similarity is used to retrieve and train the agent on similar experiences to the observation
+                        loss = self.update_q_net_in_batch_GradientTape(batch_size, observation) 
+                    else:
+                        #  when the observation is omitted, experiences are selected at random
+                        loss = self.update_q_net_in_batch_GradientTape(batch_size) 
+                # create the state with  history as a concatenation of the observation and the past observed frames
                 past_state = self.memory.get_state_history(idx= self.memory.idx-1, len_states = self.len_states-1)
                 state = np.concatenate([observation, past_state], axis=3) 
+            # keep track of some telemtry data
             self.history.update(n_ep, game_score, test_score, episode_steps, self.eps, loss, verbose=1)
         self.save_nets_and_history(n_ep, force=True)
 
 
-
     def play(self, env, n_episodes=10, frame_skip=4, verbose=0):
+        """This method allows the agent play n_episodes number of games. it return the list each game score and their overall average."""
         preprocess = PreProcessing()
         game_score_list = []
         for _ in range(n_episodes):
@@ -192,9 +219,7 @@ class DQN_Agent:
                   game_start = False
                 for _ in range(frame_skip):
                     observation, r, terminal, truncated, info = env.step(action)
-                    #preprocess.overimporse_states(observation, 0.9)
                     game_score += r
-                #observation = preprocess.get_overimposed_state()
                 if lives > info['lives']:
                     game_start = True
                     lives = info['lives']
@@ -205,6 +230,7 @@ class DQN_Agent:
         return avg_score, game_score_list
         
     def linear_anneal_eps(self):
+        """this method linearly decays the exploration factor"""
         if self.steps < self.step_threshold:
             eps = self.eps_start
         else:
@@ -216,6 +242,7 @@ class DQN_Agent:
     
 
     def stepwise_anneal_eps(self):
+        """this method  decays the exploration factor in a parametrized way as defined by the class members step_threshold and steps_levels"""
         if self.steps < self.step_threshold:
             eps = self.eps_levels[0]
         else:
@@ -230,24 +257,8 @@ class DQN_Agent:
         return
 
 
-    def update_q_net_in_batch(self,batch_size): 
-        s, next_s, a, r, not_terminal =  self.memory.get_experiences_in_batch(batch_size=batch_size, len_states=self.len_states) #  batch_size=16, batch_idxs=[] ,len_states=4
-         # use the target net to compute the update target
-        next_s = np.concatenate([next_s, s[:,:,:,0:-1]],axis = 3)
-        y = r +  not_terminal * self.gamma * np.max(self.target_net.predict_on_batch(next_s), axis=1)
-        # use the q net to compute the estimated q values for all actions during the forward pass
-        y_hat = self.q_net.predict_on_batch(s) 
-        # overwirte the value for the taken action with the future expected return calculated by the target net
-        y_hat[range(batch_size),a] = y
-        # during the backward pass, update the weights of the net to reduce the rmse.
-        # NOTE: only the action value for the current action  will contribute to the loss.
-        # therefore the weights will be adjusted accordingly#
-        #w = self.q_net.get_weights()
-        loss = self.q_net.train_on_batch(s, y_hat)
-        #w_new = self.q_net.get_weights()
-        return loss
-    
     def update_q_net_in_batch_GradientTape(self, batch_size, last_obs = []):
+        """Update the weights of the q-value network by performing a single step of gradient descent"""
         s, next_s, a, r, not_terminal =  self.memory.get_experiences_in_batch(last_obs, batch_size=batch_size, len_states=self.len_states) #  batch_size=16, batch_idxs=[] ,len_states=4
          # use the target net to compute the update target
         next_s = np.concatenate([next_s, s[:,:,:,0:-1]],axis = 3)
@@ -273,6 +284,7 @@ class DQN_Agent:
         return
 
     def init_cnn(self, adam_learning_rate=0.00025, state_len = 4):
+        """Intiliazize the CNN"""
         input_layer = Input(shape = (84,84,state_len))
         cv1_layer = Conv2D(32, 8, strides=4, activation='relu')(input_layer)
         cv2_layer = Conv2D(64, 4, strides=2, activation='relu')(cv1_layer)
@@ -285,6 +297,7 @@ class DQN_Agent:
 
 
 class DDQN_agent(DQN_Agent):
+    """Class that implements DDQN agent"""
     def __init__(self, eps_schema=3 ,memory_size = 200000,  verbose = 1, save = False,  folder="./") -> None:
         super().__init__(eps_schema=eps_schema ,memory_size=memory_size,  verbose=verbose, save=save,  folder=folder)
 
@@ -379,6 +392,7 @@ class Training_History():
 
 
 class PreProcessing:
+    """This class is resposable to perform the prepricessing on the raw image outputted by the enviroment."""
     
     def __init__(self, n_lives=5) -> None:
         self.lives = n_lives
@@ -440,16 +454,18 @@ class PreProcessing:
         return frame
 
     def get_reward(self):
-        reward = np.sign(self.reward).astype(np.int8) # cap all rewards between [-1, 1] 
+        """cap all rewards between [-1, 1] """
+        reward = np.sign(self.reward).astype(np.int8) # 
         self.clear_reward()
         return reward
     
     def get_terminal(self):
-        terminal = self.teminal # cap all rewards between [-1, 1] 
+        terminal = self.teminal 
         self.clear_terminal()
         return terminal
         
     def reset(self,n_lives):
+        """reset"""
         self.lives = n_lives
         self.clear_frame()
         self.clear_reward()
@@ -484,7 +500,7 @@ class Memory:
         self.idx +=1
 
     def get_experiences_dejavu(self, state, batch_size=16, len_state=4):
-        """this method returns the indecis of the the most similar experiences to the current state"""
+        """this method returns the indexes of the the most similar experiences to the current state"""
         rnd_idx = np.random.randint(len_state, self.get_upper_bound(), batch_size*4)
         short_time_memory = np.concatenate([self.buffer2[i][0].flatten().reshape(1,7056) for i in rnd_idx], axis = 0)   
         #short_time_memory = np.concatenate([state[0].flatten().reshape(1,7056) for state in short_time_memory], axis = 0)
@@ -492,11 +508,8 @@ class Memory:
         idxs = rnd_idx[np.argsort(similarity_matrix[:,0])[-1:-1-batch_size:-1]]
         return idxs
         
-
-
-
-
     def get_experiences_in_batch(self, last_obs, batch_size=16, batch_idxs=np.array([]) ,len_states=4):
+
         if batch_idxs.shape[0] == 0:
             if isinstance(last_obs, list):
                 batch_idxs = np.random.randint(len_states, self.get_upper_bound(), batch_size)
@@ -554,11 +567,6 @@ class Memory:
           r.append(self.buffer2[i][2]),
           t.append(self.buffer2[i][3])]
              for i in batch_idxs] 
-        # [[s.append(self.buffer[i][0]),
-        #   a.append(self.buffer[i][1]),
-        #   obs.append(self.buffer[i][2]),
-        #   r.append(self.buffer[i][3]),
-        #   t.append(self.buffer[i][4])] for i in batch_idxs] 
         s_batch = np.concatenate(s,axis=0).astype(np.uint8)
         a_batch = np.array(a)
         obs_batch = np.concatenate(obs,axis=0).astype(np.uint8)
@@ -591,15 +599,14 @@ class Memory:
 if __name__ == "__main__":
     # Create the environment
     env = gym.make('ALE/Breakout-v5', render_mode=None)
-    #env = AtariPreprocessing(env,frame_skip=1)
-    #test_env(env)
-    agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING_LINEAR, memory_size=100000, save=False, verbose=1, folder="./DDQN/")
-    #agent.train(env, n_episodes=5000, frame_skip=4, batch_size=32)
-    
+
+    # TRAIN AGENT FROM SCRATCH
+    agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING_LINEAR, memory_size=100000, save=False, verbose=1, folder="./")
+    agent.train_by_frames(env,n_frames=10000000,batch_size=32)
+
+    # RESUME TRAINING FROM A CHECKPOINT
     # agent.load_q_net("./Test6_colab/q_net_5000.h5")
     # agent.load_target_net("./Test6_colab/target_net_5000.h5")
     # agent.memory.load("./Test6_colab/Memory.pickle")
     # agent.history.load("./Test6_colab/History.pickle")
-
-    agent.train_by_frames(env,n_frames=10000000,frame_skip=4,batch_size=32)
     #agent.resume_training(env,train_frames=2000000, last_step=1485729,last_ep=4999,last_eps = 0.1,frame_skip=4)
