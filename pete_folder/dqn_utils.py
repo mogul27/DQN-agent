@@ -6,6 +6,7 @@ import pickle
 import os
 
 import traceback
+import cv2
 
 
 class ReplayMemory:
@@ -238,4 +239,40 @@ class Logger:
         stack_trace = "\n".join(traceback.format_stack()[-10:-1])
         if self.log_level <= Logger.ERROR:
             self.print('ERROR', f"{message}\n{type(e)}: {e}\n{stack_trace}")
+
+
+def reformat_observation(obs, previous_obs=None):
+    # take the max from obs and last_obs to reduce odd/even flicker that Atari 2600 has
+    if previous_obs is not None:
+        np.maximum(obs, previous_obs, out=obs)
+    # reduce merged greyscalegreyscale from 210,160 down to 84,84
+    resized_obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+    # Scale values to 1 - they range from 0 to 255, so divide by 256.
+    return resized_obs / 256
+
+
+def take_step(env, action, num_lives, skip=3):
+    previous_obs = None
+    life_lost = False
+    obs, reward, terminated, truncated, info = env.step(action)
+    if 'lives' in info:
+        if info['lives'] < num_lives:
+            num_lives = info['lives']
+            life_lost = True
+    skippy = skip
+    while reward == 0 and not terminated and not truncated and not life_lost and skippy > 0:
+        skippy -= 1
+        previous_obs = obs
+        obs, reward, terminated, truncated, info = env.step(action)
+        if 'lives' in info:
+            if info['lives'] < num_lives:
+                num_lives = info['lives']
+                life_lost = True
+    # # Try adjusting the reward to penalise losing a life / or the game.
+    # if terminated:
+    #     reward = -10
+    # elif life_lost:
+    #     reward = -1
+
+    return reformat_observation(obs, previous_obs), reward, terminated, truncated, info, life_lost, num_lives
 
