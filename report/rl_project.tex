@@ -332,7 +332,7 @@ The results obtained from running Async n-step Q-Learning did not match the resu
 
 That being the case, it gives us an expectation of 7 days processing time to achieve a score in excess of 250. However, the results we obtained actually compare favourably with those from Mnih et al (2016), reaching average scores of 25 in less than half the number of steps.
 
-The time taken to perform experiments made it difficult to tune hyperparmeters such as learning rate, exploration rate (epsilon), value/target network synchronisation frequency, shared value network update batch size. Hitting on the correct combination may well have given results similar to Mnig at al (2016).
+The time taken to perform experiments made it difficult to tune hyperparmeters such as learning rate, exploration rate (epsilon), value/target network synchronisation frequency, shared value network update batch size. Hitting on the correct combination may well have given better results.
 
 \section{Future Work}
 
@@ -360,6 +360,10 @@ DQN was quite fiddly to tune. Parameters that seems not to bear a great deal of 
 \subsection{A2C (Chris)}
 
 In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too high, the agent would not move significantly from a random sample across the four actions. However, the difference between these outcomes was often a very small change. It is, however, possible that this sensitivity may have been mitigated at the cost of increased training time by reducing the learning rate of the networks.
+
+\subsection{Async (Pete)}
+
+Creating a multiprocessing application in python using Keras seemed to be a little awkward, however, PyTorch offered much better support and it became much more straightforward once swapping to use that.
 
 \section*{References}
 
