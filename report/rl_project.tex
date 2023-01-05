@@ -269,13 +269,13 @@ The figures below show the results from a long run of approximately 40 hours (24
 \begin{subfigure}{0.49\textwidth}
 \centering
 \includegraphics[scale=0.4]{"n_step v5 by steps"}
-\captionof{figure}{Run against ALE v4}
+\captionof{figure}{Run against ALE v5}
 \end{subfigure}
-\captionof{figure}{Long run of Async n-step Q-Learning against v4 and v5 of the ALE}
+\captionof{figure}{Long runs of Async n-step Q-Learning against v4 and v5 of the ALE}
 \label{fig:ASYNC1}
 \end{figure}
 
-The figures clearly show that v5 of the ALE with \emph{repeat\_action\_probability=0.25} is harder to train against than v4 of the ALE which does not have it. 
+The figures clearly show that v5 of the ALE with \emph{repeat\_action\_probability=0.25} is harder to train against than v4 of the ALE which does not have repeat action. Scores achieved with v5 tended to improve at about half of the rate of scores achieved with v4.
 
 
 \section{Discussion}
@@ -334,9 +334,9 @@ The performance of Async n-step Q-Learning and DQN was similar with both achievi
 
 Comparing the results from Async n-step Q-Learning and A2C when trained against v4 of the ALE shows that the configuration used for A2C  learns more quickly, however, it then becomes unstable. The Async n-step Q-Learning was steadier, but kept on increasing, managing an average score of over 100 after processing 24 million frames.
 
-The results obtained from running Async n-step Q-Learning did not match the results and time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch is 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 6 million frames in 10 hours, making it approximately 16 times slower.
+The results obtained from running Async n-step Q-Learning did not match the results and time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 6 million frames in 10 hours, making it approximately 16 times slower.
 
-Using this information, the results we obtained against v5 of ALE actually compare favourably with those from Mnih et al (2016), reaching average scores of 50 in approximately half the number of steps.
+Using this information, the results we obtained against v5 of ALE can be seen to compare favourably with those from Mnih et al (2016), as we reached average scores of 50 in approximately half the number of frames.
 
 The time taken to perform experiments made it difficult to tune hyperparmeters such as learning rate, exploration rate (epsilon), value/target network synchronisation frequency, shared value network update batch size. Hitting on the correct combination may well have given better results.
 
