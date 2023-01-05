@@ -435,7 +435,7 @@ class AsyncQLearnerWorker(mp.Process):
         steps_since_async_update = 0
         num_lives = 0
 
-        env = gym.make(self.options.get('env_name'), obs_type="grayscale", render_mode=self.options.get('render'))
+        env = gym.make(self.options.get('env_name'), obs_type="grayscale")
 
         action = -1
         total_reward = 0
