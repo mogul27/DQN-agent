@@ -25,6 +25,7 @@
 \usepackage[noend]{algpseudocode}
 \usepackage{float}
 \usepackage{subcaption}     % specifying captions
+\usepackage{wrapfig}
 
 \captionsetup[figure]{font={bf,small}, labelsep=period}
 
@@ -46,24 +47,23 @@
 % author name.
 
 \author{
-  Peter Coates
-  \\
-  Department of Computer Science\\
+  Peter Coates  \\
+  Dept of Computer Science\\
   University of Bath\\
   Bath, BA2 7AY \\
-  \texttt{pmc52@bath.ac.uk} \\
+  \texttt{pmc52@bath.ac.uk}
 \And
   Christopher Burton\\
-  Department of Computer Science\\
+  Dept of Computer Science\\
   University of Bath \\
-  BA2 7AY\\
-  \texttt{cb2516@bath.ac.uk} \\
+  Bath, BA2 7AY\\
+  \texttt{cb2516@bath.ac.uk}
 \And
   Mirco Carciani\\
-  Department of Computer Science\\
+  Dept of Computer Science\\
   University of Bath \\
-  BA2 7AY\\
-  \texttt{mc2886@bath.ac.uk} \\
+  Bath, BA2 7AY\\
+  \texttt{mc2886@bath.ac.uk}
 }
 
 
@@ -75,87 +75,90 @@
 
 % A clear, precise and concise description of your chosen problem, including the states, actions, transition dynamics, and the reward function. You will lose marks for an unclear, incorrect, or incomplete problem definition.
 Breakout, a 2D game. part of the classic Atari 2600 games was chosen as the "problem" to solve for this assignment.
-In the game of Breakout, a player controlls a paddle to bounce a ball against a wall composed by a stack of 6 layers of briks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
+In the game of Breakout, a player controls a paddle to bounce a ball against a wall composed by a stack of 6 layers of bricks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when 5 lives are lost.
 Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right.
-The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Altough Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out what of the avaialbe actions is best to take in each state  to maximize the future reward.  The game can also be played in multi player mode, but for the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen   
+
+The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Although Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out which of the available actions is best to take in each state to maximize the future reward. For the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen.
 
 \section{Background}
 
 %A discussion of reinforcement learning methods that may be effective at solving your chosen problem, their strengths and weaknesses for your chosen problem, and any existing results in the scientific literature (or publicly available online) on your chosen problem or similar problems.
 
-\subsection{DQN (Mirco)}
+\subsection{DQN}
 One category of reinforcement learning methods that can be used to solve the game of Breakout is value-based methods which use function approximation.
-These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and  $\theta \in \mathbb{R}^n$ to estimates the action-value functions for each state and therefore determine the optimal action $a$ to take in the state $s$.
+These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and  $\theta \in \mathbb{R}^n$ to estimate the action-value functions for each state and therefore determine the optimal action $a$ to take in state $s$.
 
-Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to achieve and surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
-Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31.8 reached in the same testing conditions by a tester professional human player.
+Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
+Mnih et al., 2015 show how DQN was able to reach an average score of 401, compared to an average score of 31.8 reached in the same testing conditions by a professional human tester.
 
-Earlier attempts, to use nonlinear function approximations to estimate the action value function, were made before the introduction of DQN agent (find reference) but presented limited and unstable learning.
-DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy.
+DQN introduced both a separate \emph{target network} to estimate the next state maximum action value function and \emph{experience replay memory} to avoid correlated data during training. These introductions allowed DQN to achieve stable learning and converge towards an optimal policy.
 
-DQN, of course, comes with its own limitations, more specifically, the generally slow training requiring the agent to play a number of frames in the order of millions to achieve human performances translate is a slow learning process. Hasselt, Guez and Silver, 2016  showed that, like Q-learning, DQN overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during the bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agents.
+\subsection{A2C}
 
+An alternative value-based methods are policy gradient methods. Policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018). In selecting actions using a parameterised policy, policy gradient methods use \emph{action preferences} rather than action values. This distinction is crucial as it confers several benefits to policy gradient methods such as the ability to learn a stochastic optimal policy and have the policy approach a deterministic policy (Sutton and Barto, 2018).
 
-\subsection{A2C (Chris)}
+A Policy-Gradient method that has been shown to be effective on similar tasks to Breakout is Actor-Critic. An asynchronous, extended version of Actor Critic called Asynchronous Advantage Actor-Critic (A3C) was implemented by Minh et al (2016) to mitigate issues with instability due to temporally correlated data across time-steps (Li, Bing and Yang, 2018). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). A synchronous version of A3C that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C). Whilst both methods provide strong results on Breakout and similar tasks, results from Wu et al. (2017) indicate that A2C is a more suitable algorithm for the problem of Breakout than A3C.
 
-A set of alternative methods to value-based methods are policy gradient methods. Whilst value-based methods such as DQN learn values of actions and use these estimates to select actions, policy gradient methods do not need to consult a value function and, instead, learn a parameterised policy to select actions (Sutton and Barto, 2018). In selecting actions using a parameterised policy, policy gradient methods use \emph{action preferences} rather than action values. This distinction is crucial as it confers several benefits to policy gradient methods such as the ability to learn a stochastic optimal policy and have the policy approach a deterministic policy (Sutton and Barto, 2018). Policy Gradient techniques have seen success in high-profile reinforcement learning breakthroughs in game-playing. Most notably, AlphaGo (Silver et al. 2016) used the REINFORCE algorithm to train the policy network used in the agent.
-
-A Policy-Gradient method that has been shown to be effective on similar tasks to Breakout is Actor-Critic. An asynchronous, extended version of Actor Critic called Asynchronous Advantage Actor-Critic (A3C) was implemented by Minh et al (2016) to mitigate issues with instability due to temporally correlated data across time-steps (Li, Bing and Yang, 2018). The Advantage component of A3C refers to the use of an advantage function in the reinforcing signals sent to the actor. This advantage value quantifies how much better or worse an action is than the average available action by using the critic's valuation of states (Graesser and Loon, 2020). A synchronous version of A3C that implements the advantage function but does not execute multiple agents in parallel is known as Advantage Actor Critic (A2C). Whilst both methods provide strong results on Breakout and similar tasks, results from Wu et al. (2017) indicate that A2C is a more suitable algorithm for the problem of Breakout than A3C. Indeed, on a set of Atari games, including Breakout, their results showed that A2C outperformed A3C and the noise introduced by the asynchronous implementation failed to deliver any performance benefit (Wu et al. 2017).
-
-\subsection{Async Q-Learning (Peter)}
+\subsection{Async Q-Learning}
 
 Mnih et al (2016) present asynchronous variants of reinforcement learning algorithms including both Q-Learning and Actor-Critic (A3C).
-The paper claims the asynchronous variants can produce excellent results on single multi-core CPUs with training times of just a few hours.
+The paper claims the asynchronous variants can produce excellent results on single multi-core CPUs with training times of just a few hours. The results published by Mnih et al (2016) are impressive and show that after 10 hours training with breakout, Async Q-Learning scored 240 and A3C scored 460, whilst DQN only managed 25.
 
-Unlike DQN, the asynchronous methods do not require an experience replay memory because multiple agents working in parallel means that the data is fragmented and is sufficiently decorellated.
-
-The results published by Mnih et al (2016) are impressive and show that after 10 hours training with breakout, Async Q-Learning scored 240 and A3C scored 460, whilst DQN only managed 25.
-
+Unlike DQN, the asynchronous methods do not require an experience replay memory as multiple agents working in parallel means that the data is fragmented and sufficiently decorellated.
 
 \section{Method}
 %A description of the method(s) used to solve your chosen problem, an explanation of how these methods work (in your own words), and an explanation of why you chose these specific methods.
-\subsection{DQN (Mirco)}
+\subsection{DQN}
 
-As already mentioned in section 2, DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network, namely,
+DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network, namely,
 
 \begin{equation}
 Q(S,A) = f(S,A,\theta) = \hat{Q}(S,A,\theta)
 \end{equation}
 
-DQN as well as Q-Learning, uses bootstrapping to update the action value function as shown in the equating below. 
+Bootstrapping is used to update the action value function as shown in the equation below.
 \begin{equation}
 \hat{Q}(S,A,\theta) = \hat{Q}(S,A,\theta) + \alpha * \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta) - \hat{Q}(S,A,\theta) \right)
 \end{equation}
-where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
-With tabular RL methods, the learning process is achieved by directly updating the action value function correspondent to each state-action pair while the agent interacts with the environment. With function approximation methods, the learning happens by updating the function parameters used to estimate the action value functions.
-More specifically, the function parameters are update in the direction that minimize the loss between the current action value function estimation and its update. The weight update is achieved by a single step of gradient descen as described in equation \ref{eqn:weightupdate}.
+Where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
+
+The function parameters are updated in the direction that minimizes the loss between the current action value function estimation and its update. The weight update is achieved by a single step of gradient descent as described in equation \ref{eqn:weightupdate}.
 
 \begin{equation}
 \label{eqn:weightupdate}
 \theta_{t+1} = \theta_{t} + \alpha \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta_{t}) - \hat{Q}(S,A,\theta_{t}) \right) \nabla_{\theta_{t}} \hat{Q}(S,A,\theta_{t})
 \end{equation}
 
-DQN, as well as, Q learning belongs to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation \ref{eqn:weightupdate}, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
+As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t})$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015 was the introduction of separate networks. One network (q-value network), is used to estimate the action value functions of the current state $S$, while a separate network (target network) is used to estimate the action value functions of the next state $S'$. The weights of the target network are kept constant for a number of iterations before being synched with the q-value network weights. By using a constant target network, the q-value network can be updated towards a stable target limiting instability during training.
 
-As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t})$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015 is the introduction of two separate networks during the action-value function estimation. One network, called q-value network, is used to estimate the action value functions of the current state S, while a separate target network is used to estimate the action value functions of the next state $S'$ . The weights of the target network are kept constant for a certain number of iteration before being synched with the q-network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
+DQN also uses a replay memory buffer to store the last $N$ interactions with the environment. At each step, the following details are recorded in the memory: state $S$, action $A$, reward $R$, observed next state $S^\prime$ and flag indicating whether or not $S^\prime$ is terminal.
 
-DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n \in N$ of experiences is selected and used to update the q-network weights using equations \ref{eqn:weightupdate}. This allows the agent to train on time uncorrelated data. Each experience, stored in the replay buffer, comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the  observed next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random from the buffer of capacity $N$. The second and third strategy utilizes cosine similarity to select and train the agent on  close matching experiences to the observation $S'$. these differ from the fact that in the former only half of the experiences are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation the agent would train and update the action value function for the states that would likely resembles the next state in which it will operate allowing for a more informed decision.
+A subset $n \in N$ of experiences is then selected and used to update the q-value network weights using equations \ref{eqn:weightupdate}. This allows the agent to train on time uncorrelated data.
 
-DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by choosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
+Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer.
+\begin{enumerate}
+  \item Uses the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random from the buffer of capacity $N$.
+  \item Selects half randomly and half using cosine similarity to select experiences that closely matching the next state $S'$.
+  \item Uses cosine similarity to select experiences that closely matching the next state $S'$.
+\end{enumerate}
+The idea behind the cosine similarity approach is to create a synthetic dejavu.
+
+DQN uses an $\epsilon-greedy$ policy to provide exploration whilst choosing the best action $A*$ from all available actions in the next states.
 The exploration factor $\epsilon$ is reduced from an initial value of 1 to 0.1 over 1M steps and kept constant thereafter.
 
 The loss function used to calculate the weight updates is the Huber loss which improve stability by clipping the gradient of the loss with respect the estimated action value function. Mnih et al., 2015 shows how this improves stability during training.
 
-Two identical CNN are used as function approximations for the Q values. These take as input the raw pixel data outputted by the environments. Preprocessing is applied to the input image to reduce the amount of computation. More specifically, the image is cropped, resized to 84x84 pixel and converted to grey scale. Moreover, to give the CNN the information about the ball trajectory, the state S is a concatenation of 4 consecutive states experienced by the agent. The output of the CNN are the Q values for each action available in state S.
+Two identical convolutional neural networks (CNN) are used as function approximations for the Q values. The raw pixel data output by  whilst playing Breakout is preprocessed before being used as input to the CNNs for state $S$. The output of the CNNs are the Q values for each action available in that state $S$.
+The preprocessing crops the raw data, resizes to 84x84 pixel and converts to grey scale. And, to give the CNN the information about the ball trajectory, the state $S$ is a stack of the current and 3 previous frames.
 DQN pseudo-code is shown in \nameref{dqn_pseudo}
 
-\subsection{A2C (Chris)}
+\subsection{A2C}
 
-The second method chosen to solve our specific problem of Atari Breakout is Advantage Actor-Critic (A2C). In this implementation, the actor policy is parameterised by a convolutional neural network (CNN) where the parameters are the weights of the neural network. The critic is also implemented as a convolutional neural network, with both architectures following a modified version of that used in Minh et al. (2015). For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve a policy parameterisation known as softmax in action preferences (Sutton and Barto, 2018). The critic network uses the same architecture but uses a single output neuron with linear activation, representing the action-value that the critic prescribes to a given state. RandomUniform initialisation is used with a small range of min and max values (0 - 0.02) as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
+The second method chosen to solve our specific problem of Atari Breakout is Advantage Actor-Critic (A2C). In this implementation, the actor policy is parameterised by a CNN where the parameters are the weights of the neural network. The critic is also implemented as a CNN, with both architectures following a modified version of that used in Minh et al. (2015). For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve a policy parameterisation known as softmax in action preferences (Sutton and Barto, 2018). The critic network uses the same architecture but has a single output neuron with linear activation, representing the action-value that the critic prescribes to a given state. RandomUniform initialisation is used with a small range of min and max values (0 - 0.02) as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
 
-The input to both networks is a pre-processed 84x84x4 image that represents a state the Breakout environment. The preprocessing applied is similar to that applied in Minh et al. (2015), including greyscale, image cropping and frame-skip. This is implemented using an OpenAIGym provided Atari wrapper that follows the guidelines in Machado et al. (2018) The 4 channels of the image are implemented using the StateHistory class which includes the current frame and the 3 previous frames, giving the agent context to the current frame such as the direction the ball is travelling in.
+The input to both networks is similar to that used for DQN, and, is implemented using an OpenAIGym provided Atari wrapper that follows the guidelines in Machado et al. (2018). The current and the 3 previous frames are stacked to give the agent context such as the direction the ball is travelling in.
 
-The critic uses a TD update to adjust its estimate of the value of a state. Each step of the environment, the critic network calculates a value estimate for both the previous state and the next-state that the agent is in. In a similar fashion to TD(0), the critic uses the bootstrapped estimate of the next state, the reward at t+1 and the discount factor to calculate a target value for the state. The mean squared difference between the critic's initial value of the state and the target value is used to update the critic and adjust its estimate of the state closer to the target value. The target TD value is also to calculate the advantage function for the actor loss by subtracting the critic's valuation of the previous state from the target TD update. The full A2C actor update rule from Yoon (2019) is given below:
+The critic uses a TD update. At each step, the critic network calculates a value estimate for both the previous state and the next-state that the agent is in. The critic uses a bootstrapped estimate of the next state, the reward at $t+1$ and the discount factor to calculate a target value for the state. The mean squared difference between the critic's initial value of the state and the target value is used to update the critic and adjust its estimate of the state closer to the target value. The target TD value is used also to calculate the advantage function for the actor loss by subtracting the critic's valuation of the previous state from the target TD update. The full A2C actor update rule from Yoon (2019) is given below:
 
 \begin{equation}
 \nabla_{\theta} J(\theta) = \sum_{t=0}^{T-1}\nabla_{\theta}\log{\pi_{\theta}}(a_{t} | s_{t}) A(s_{t}, a_{t})
@@ -165,99 +168,100 @@ Where:
 A(s_{t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamma V_{v}(s_{t+1}) - V_{v}(s_{t})
 \end{equation}
 
-The first component of the actor loss function is the gradient in parameter space (delta). This value represents the action taken and whether it followed or went against the current actor policy. The delta term implementation in this assignment follows an extended version of the method followed by Wang (2021).The advantage component, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state (Positive advantage) or worse (Negative advantage). By multiplying the gradient of action selection with respect to the current policy and a positive or negative advantage value, the actor evaluates the action taken and current policy against the valuation states from the critic. The agent is encouraged to reinforce the current policy if the action taken follows the current policy and the action taken resulted in a value better than the average value for that state or the action taken went against policy which resulted in a lower than average value. Conversely, the agent is encouraged to update away from the current policy if the action followed the current policy and resulted in a worse value than average for the state or if the agent went against current policy and the resulting value was better than the average for the state. The use of log probabilities in the calculation of the actor loss yields a loss function similar to categorical cross entropy with the negative log probabilities being multiplied by an advantage adjusted delta term to represent the action taken and the probabilities of taking each action. Using log probabilities offer benefits over the use of raw probabilities since log probabilities do not tend to 0 when multiplied and thus, provide better numerical stability during training.
+The first component of the actor loss function is the gradient in parameter space (delta). This value represents the action taken and whether it followed or went against the current actor policy. The delta term implementation in this assignment follows an extended version of the method followed by Wang (2021).The advantage component, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state (Positive advantage) or worse (Negative advantage). By multiplying the gradient of action selection with respect to the current policy and a positive or negative advantage value, the actor evaluates the action taken and current policy against the valuation states from the critic. The agent is encouraged to reinforce the current policy if the action taken follows the current policy and the action taken resulted in a value better than the average value for that state or the action taken went against policy which resulted in a lower than average value. Conversely, the agent is encouraged to update away from the current policy if the action followed the current policy and resulted in a worse value than average for the state or if the agent went against current policy and the resulting value was better than the average for the state. Since log probabilities do not tend to 0 when multiplied, they provide better numerical stability during training.
 
-Initial runs showed that even with very small learning rates (1e-5 and below), the agent would find a local minima, selecting one action every time, making it incapable of sampling other actions. Thus, an entropy term has been added to improve training stability. The entropy term, originally proposed by William and Peng (1991) for use with the REINFORCE algorithm, encourages the actor to output a distribution with higher entropy (More even probabilities) by penalising low entropy outputs through the loss function. For example, in an environment with four actions such as Breakout, a maximum entropy output distribution would have a 0.25 probability of selecting each action. The inclusion of the entropy term yields a new update equation below where  $\beta$ is the entropy weight, which is a hyperparameter that controls how much the actor loss comprises of the entropy value.
+Initial runs showed that even with very small learning rates (1e-5 and below), the agent would find a local minima, selecting the same action every time. Thus, an entropy term has been added to improve training stability. The entropy term, originally proposed by William and Peng (1991) for use with the REINFORCE algorithm, encourages the actor to output a distribution with higher entropy (More even probabilities) by penalising low entropy outputs through the loss function. For example, in an environment with four actions such as Breakout, a maximum entropy output distribution would have a 0.25 probability of selecting each action. The inclusion of the entropy term yields a new update equation below where  $\beta$ is the entropy weight, which is a hyperparameter that controls how much the actor loss comprises of the entropy value.
 
 \begin{equation}
 \nabla_{\theta} J(\theta) = \sum_{t=0}^{T-1}-\nabla_{\theta}\log{\pi_{\theta}}(a_{t} | s_{t}) A(s_{t}, a_{t}) + \beta H_{t}
 \end{equation}
 
-\subsection{Async Q-Learning (Peter)}
+\subsection{Async Q-Learning}
 
-Async Q-Learning was chosen as it was similar to DQN, but promised improved learning in a shorter time.
-Pseudo code is shown in \nameref{async_q_pseudo}
+Async Q-Learning was chosen as it is similar to DQN, but promises improved learning in a shorter time. \nameref{async_q_pseudo}
 
-Like DQN, Async Q-Learning uses an $\epsilon$-greedy policy based on a value network to select actions to take and then uses a target network to get an action value used to calculate the loss.
+Like DQN, Async Q-Learning uses an $\epsilon$-greedy policy based on a value network to select actions to take and then uses a target network to estimate an action value that is used to calculate the loss.
 The weights in the target network are occasionally reset to match the value network.
 
 Where Async Q-Learning differs from DQN is that it runs multiple worker agents in separate processes which share the value and target networks.
-Each worker agent keeps a local copy of the value and target networks to calculate the losses and gradients which it then applies to the shared networks every few steps.
-Once the worker agent has updated the shared network, it resets the weights in its own copies to match shared ones.
-As the worker agent takes a number of steps before updating the shared network, the updates are done like mini-batches and the chances of one worker agent overwritting changes being made by another are reduced.
+Each worker agent uses local copies of the value and target networks to calculate the losses and gradients, then applies them to the  shared networks every few steps as a single batch.
+Once the worker agent has updated the shared network, it refreshes the weights in its local copies to match shared ones.
 
-As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements.
+As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements. (\nameref{async_q_n_step_pseudo})
 
-Having multiple worker agents running at the same time, and the non-deterministic nature of breakout means that different areas of the game will be explored at the same time.
+Having multiple worker agents running at the same time means that different areas of the game will be explored at the same time.
 The different worker agents were also given different epsilon values for their $\epsilon$-greedy policies to further increase the variety of exploration.
-Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run a single test meant a thorough examination of the impacts of both of these hyperparameters was not possible.
+Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run tests meant a thorough examination of the impacts of these hyperparameters was not possible.
 
-A controller process handles the creation of multiple workers as different processes.
+A controller process handles the creation of multiple workers and a stats collector.
 The controller gives each worker a queue which allows communication between controller and workers.
-Each worker starts the atari environment and plays games of breakout.
-An episode is a complete game, and at the end of each episode the worker sends some details to the controller.
-
+Each worker starts the ALE environment and plays games of breakout letting the controller know the results of each game.
 The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy created from a copy of the shared value network to provide a measure of how well the training is going.
 
-
 \section{Results}
-
 %result comparison between the 3 approaches.
 %how quickly each agent learns
 %how well do they perform is absolute terms
 %how do they compare  with respect to a human player
-The DQN implementation was tested against v5 of the ALE framework, whilst the A2C implemtnations was tested against v4 of the ALE framework. The main difference between the two ALE versions is that v5 introduces a \emph{repeat\_action\_probability=0.25}. This  means that  25\% of the time the action sent to ALE is ignored, and the previous action is used instead. This makes the ALE environment stochastic and harder to train an agent against. For the following results, DQN was trained against v5, A2C was trained against v4, and Asynch Q-Learning was trained against both.
+
+The DQN implementation was tested against v5 of the ALE framework, whilst the A2C implemtnations was tested against v4 of the ALE framework. The main difference between the two ALE versions is that v5 introduces a \emph{repeat\_action\_probability=0.25}. This  means that 25\% of the time the action sent to ALE is ignored, and the previous action is used instead. This makes the ALE environment stochastic and harder to train an agent against. For the following results, DQN was trained against v5, A2C was trained against v4, and Asynch Q-Learning was trained against both.
 
 
-\subsection{DQN (Mirco)}
+\subsection{DQN}
 %% Explain the differete experiements
 %% PLot the graphs evaluation vs
 
-Different DQN agents with different configurations of memory capacity and experiencereplay selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations. 
+Different DQN agents with different configurations of memory capacity and experience replay selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations.
 \begin{figure}[H]
 \centering
 \includegraphics[scale=0.5]{DQNAgentComparison.PNG}
-\caption[width=0.7\textwidth]{DQN agent performances comparison over 7M frames. DQN1: N=200k, random experience replay selection. DQN2: N=1M, random experience replay selection. DQN3: N=200k, half prioritized experience replay selection. DQN5: N=500k, full prioritized experience replay selection.}
+\caption{DQN agent performances comparison over 7M frames. DQN1: N=200k, random experience replay selection. DQN2: N=1M, random experience replay selection. DQN3: N=200k, half prioritized experience replay selection. DQN4: N=500k, full prioritized experience replay selection.}
 \label{fig:DQNAgentComparison}
 \end{figure}
 
-Due to the amount of time required to train multiple agent, the training process was then resumed until 24M frames with DQ2 agent only. DQN2 was chosen for two main reasons. DQN2 hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison. Although the performance between DQN1, DQN2 and DQN3 agents do slightly vary, there is not clear cut winner. DQN4 does seem to perform the worse between the tested configurations. More details are given in section 5.
+Due to the amount of time required to train multiple agent, the training process was then resumed until 24M frames with DQN2 agent only. There was no clearcut winner from the initial test, so DQN2 was chosen because its hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison.
 
 \begin{figure}[H]
 \centering
 \begin{subfigure}{0.49\textwidth}
 \centering
-\includegraphics[scale=0.46]{DQNTestScore.PNG}
+\includegraphics[scale=0.42]{DQNTestScore.PNG}
 \captionof{figure}{Test score over 30 games with epsilon = 0}
 \end{subfigure}
 \begin{subfigure}{0.49\textwidth}
 \centering
-\includegraphics[scale=0.46]{DQNMovAvgTraining.PNG}
+\includegraphics[scale=0.42]{DQNMovAvgTraining.PNG}
 \captionof{figure}{10 games score moving average during training}
 \end{subfigure}
-\caption[width=0.7\textwidth]{DQN2 performances}]
+\caption{DQN2 performances}
 \label{fig:DQN2}
 \end{figure}
 
-Figure \ref{fig:DQN2}-(a) report the median test score calculated as the median over 30 games using a determinist policy, namely, $\epsilon = 0$. The faded bands represent the 95\% confidence interval.
 
-Figure \ref{fig:DQN2}-(b) shows in blue the moving average of the score over 10 games during training. The green trajectory shows the decaying exploration factor $\epsilon$ over the first 1 million frames. 
+\subsection{A2C}
+
+From episode 1000, the agent shows steady and notable improvement, maintaining a running average of over 10 points by episode 2500.
+
+\begin{wrapfigure}{r}{0.55\textwidth}
+\centering
+\captionsetup{width=.8\linewidth}
+\vspace*{-1cm}
+\includegraphics[width=.98\linewidth]{A2C4000.png}
+\caption{10-episode running average for Breakout A2C agent over 4000 episodes}
+\end{wrapfigure}
 
 
-\subsection{A2C (Chris)}
+ The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233. 
+ 
+ Beyond this point the agent shows evidence of overtraining. Performance significantly deteriorates to the level seen in the earliest episodes. 
+ 
+ Observing the actor's softmax output, we see that the agent is outputting almost the same probabilities for every state with very little change in the distribution between states or between episodes.
 
-\begin{figure}[h]
-\includegraphics[scale=0.2]{A2C4000.png}
-\end{figure}
-\emph{Figure 4.1: 10-episode running average for Breakout A2C agent over 4000 episodes}
+\subsection{Async Q-Learning}
 
-From episode 1000, the agent shows steady and notable improvement, maintaining a running average of over 10 points by episode 2500. The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233. Beyond this point the agent shows evidence of overtraining. The performance significantly deteriorates to the level seen in the earliest episodes. Observing the softmax output from the actor during this period shows the agent is outputting almost the same probabilities for every state with very little change in the distribution between states or between episodes.
+As expected Asynch n-step Q-Learning (using n=8) learnt more quickly than the single step version. So, the majority of tests were performed with the n-step vesion.
 
-\subsection{Async Q-Learning (Peter)}
-
-As expected Asynch n-step Q-Learning (using n=8) tended to learn more quickly than the single step version. So, the majority of tests were performed with the n-step vesion.
-
-The figures below show the results from a long run of approximately 40 hours (24 million frames). A learning rate of 0.0001 was used, and the epsilon values in the $\epsilon$-greedy policies varied in the different processes and were reduced from a maximum of 0.4 down to 0.1 after approximately a million frames.
+The figures below show the results from a long run of approximately 40 hours (24 million frames). A learning rate of 0.0001, epsilon values in the $\epsilon$-greedy policies varied in different processes and were reduced from a maximum of 0.4 down to 0.1 after approximately a million frames.
 
 \begin{figure}[H]
 \centering
@@ -271,7 +275,7 @@ The figures below show the results from a long run of approximately 40 hours (24
 \includegraphics[scale=0.4]{"n_step v5 by steps"}
 \captionof{figure}{Run against ALE v5}
 \end{subfigure}
-\captionof{figure}{Long runs of Async n-step Q-Learning against v4 and v5 of the ALE}
+\caption{Long runs of Async n-step Q-Learning against v4 and v5 of the ALE}
 \label{fig:ASYNC1}
 \end{figure}
 
@@ -282,9 +286,9 @@ The figures clearly show that v5 of the ALE with \emph{repeat\_action\_probabili
     
 %An evaluation of how well you solved your chosen problem.
 
-\subsection{DQN (Mirco)}
-Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure \ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to evaluate that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
-\begin{table}[h!]
+\subsection{DQN}
+Mnih et al., 2015 report a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performance. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Although we could not match Mnih et al., 2015 results, our agent reaches 160\% of human performance.
+\begin{table}[H]
 \centering
 \begin{tabular}{|c | c | c |} 
  \hline
@@ -294,58 +298,42 @@ Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We we
  \hline
 \end{tabular}
 \end{table}
-It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer sizes and experience replay selection methods shown in Figure\ref{fig:DQNAgentComparison}. DQN 1 and DQN2 only differ in the size of the memory buffer, 200K vs 1M respectively. No appreciable differences were seen during the first 7 million frames. Comparable results were obtained selection half of the training samples using cosine similarity. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
+It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer sizes and experience replay selection methods shown in Figure\ref{fig:DQNAgentComparison}. DQN1 and DQN2 differ in the size of the memory buffer (200K vs 1M), but, no appreciable difference was seen between the two. Comparable results were obtained selecting half of the training samples using cosine similarity. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
 
-\subsection{A2C (Chris)}
+\subsection{A2C}
 
-\begin{table}[h!]
+\begin{table}[H]
 \centering
 \begin{tabular}{|c | c | c |} 
  \hline
- Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
+ Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50M frames) \\ [0.5ex]
  \hline
  31.8 & 41.4 & 581.6  \\ 
  \hline
 \end{tabular}
 \end{table}
-\emph{Table 5.1: Col 1- Human performance on Breakout from a professional games tester (Mnih et al., 2015). Col2 - Peak performance of A2C implementation in this assignment averaged over 10 episodes. Col3 - Performance of A2C implementation in Wu et al. (2017)  after 50 million timesteps averaged over 100 episodes}
 
-As shown in Table 5.1, using an average over 10 games, the A2C implementation was able to significantly outperform a professional human game tester, reaching 130.19\% of human performance. This was achieved in ~3750 episodes of training which equated to approximately 8 hours training time on CPU. As the implementation outperforms the human baseline, this indicates the agent has solved the chosen problem relatively well and achieves superhuman performance.
+The A2C implementation was able to significantly outperform a professional human game tester, reaching 130.19\% of human performance. This was achieved in 3,750 episodes (8 hours) of training. The implementation outperforms the human baseline, so, the agent has solved the chosen problem relatively well. Wu et al. (2017) required 14,464 episodes to surpass human performance, whereas our A2C implementation only required 3,774. This shows that our implementation learns quickly.
 
-However, the implementation does not come close to achieving the 100 game running average of 581.6 achieved by the A2C implementation in Wu et al. (2017). Thus, whilst the agent does solve the problem effectively enough to achieve superhuman performance, it does not match similar implementations in the literature. The agent training becomes unstable significantly before the timesteps taken in Wu et al. (2017). Interestingly, across several runs, the instability and subsequent local minima appear after a particularly high score (In this case 233), indicating that a potential cause for the deterioration in performance is a very large update to the networks that the agent is unable to properly incorporate. This suggests that, given more time and resources in the assignment, a potential route to match the high scores reached in the literature is to reduce the learning rate and training the agent for significantly longer or implementing reward clipping.
+However, the implementation does not come close to achieving the 100 game running average of 581.6 achieved by the A2C implementation in Wu et al. (2017). The agent training becomes unstable significantly before the timesteps taken in Wu et al. (2017). Interestingly, across several runs, the instability and subsequent local minima appear after a particularly high score (In this case 233), indicating that a potential cause is a very large update to the networks that the agent is unable to properly incorporate. This suggests that a potential route to match the high scores reached in the literature is to reduce the learning rate and training the agent for significantly longer or implementing reward clipping.
 
-\begin{table}[h!]
-\centering
-\begin{tabular}{|c | c|} 
- \hline
- A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
- \hline
- 3774 & 14464   \\ 
- \hline
-\end{tabular}
-\end{table}
-\emph{Table 5.2: Col 1- Episodes required for 10 episode average to surpass human performance Col2 - Episodes required for Wu et al. (2017) A2C implementation to surpass human performance over 100 episode average.}
 
-Table 5.2 compounds the idea that the agent implemented in this paper learns quickly but that this may be the cause of the instability. Whilst the episode average windows are of different sizes, the difference number of episodes required for the A2C to surpass human performance over the chosen window is relatively large. This suggests that although the agent is unable to match the final performance of similar implementations in the literature, the agent in this implementation learns quickly. This, again, suggests that with more time and resources, a lower learning rate and a greater training time may allow this implementation to reach scores comparable to those in the literature.
+\subsection{Async Q-Learning}
 
-\subsection{Async Q-Learning (Peter)}
+The performance of Async n-step Q-Learning and DQN was similar with both achieving an average score around 50 after processing 24 million frames with v5 of the ALE.
 
-The performance of Async n-step Q-Learning and DQN was similar with both achieving an average score around 50 after processing 24 million frames when trained against v5 of the ALE. 
+Comparing the results from Async n-step Q-Learning and A2C when trained against v4 of the ALE shows that the configuration used for A2C  learns more quickly. Async n-step Q-Learning was slower, but kept on increasing, managing an average score of over 100 after processing 24 million frames.
 
-Comparing the results from Async n-step Q-Learning and A2C when trained against v4 of the ALE shows that the configuration used for A2C  learns more quickly, however, it then becomes unstable. The Async n-step Q-Learning was steadier, but kept on increasing, managing an average score of over 100 after processing 24 million frames.
+The results obtained from running Async n-step Q-Learning did not match the results and time scales achieved by Mnih et al (2016). However, they completed approx 25 epochs in 10 hours to get scores in excess of 250. A single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation is 16 times slower, processing about 6 million frames in 10 hours.
 
-The results obtained from running Async n-step Q-Learning did not match the results and time scales achieved by Mnih et al (2016). On further examination of figures published by Mnih et al (2016) the scores on the data efficiency and training time graphs show that they completed approx 25 epochs in 10 hours giving scores in excess of 250. A single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation for asynch Q-Learning processed about 6 million frames in 10 hours, making it approximately 16 times slower.
-
-Using this information, the results we obtained against v5 of ALE can be seen to compare favourably with those from Mnih et al (2016), as we reached average scores of 50 in approximately half the number of frames.
-
-The time taken to perform experiments made it difficult to tune hyperparmeters such as learning rate, exploration rate (epsilon), value/target network synchronisation frequency, shared value network update batch size. Hitting on the correct combination may well have given better results.
+Our results compare favourably with those from Mnih et al (2016), as we reached average scores of 50 in approximately half the number of frames. Although, we have not trained for long enough to compare final scores.
 
 \section{Future Work}
 
-\subsection{DQN (Mirco)}
-Experience replay is a key ingredient in the success of DQN agent. In this assignment random experience replay was implement, and, although effective, Schaul et al., 2016 work prove that rank-based and proportional based prioritized experience replay improves the agent performances. Narasimhan et al., 2015 also suggest an alternative method of resampling the experiences. The method separates experience into two buckets, one for positive and one for negative rewards. The experiences are then picked from the two buckets by a fixed ratio.
+\subsection{DQN}
+Experience replay is a key ingredient in the success of DQN agent. In this assignment random experience replay was implemented, and, although effective, Schaul et al., 2016 work prove that rank-based and proportional based prioritized experience replay improves the agent performances. Narasimhan et al., 2015 also suggest an alternative method of resampling the experiences. The method separates experience into two buckets, one for positive and one for negative rewards. The experiences are then picked from the two buckets by a fixed ratio.
 
-\subsection{A2C (Chris)}
+\subsection{A2C}
 
 In the A2C implementation used, the advantage function is calculated using n-step (Where n=1) returns. This only includes one step of actual rewards. Since rewards are generated from a single trajectory, they tend to have high variance but are unbiased. However, the state valuation reflects all trajectories seen so far and thus has lower variance but introduces bias. As a result, the value of n controls the bias-variance tradeoff (Graesser and Loon, 2020).Thus, using 1 step returns provides us with a tradeoff of low variance but introduces significant bias through the reliance on state value.
 
@@ -360,14 +348,14 @@ It would also be interesting to investigate the asynchronous version of advantag
 \section{Personal Experience}
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
-\subsection{DQN (Mirco)}
+\subsection{Mirco}
 DQN was quite fiddly to tune. Parameters that seems not to bear a great deal of impotance over the training process actaully affected results quite heavily. For instance, a key factor for the agent learning stability was frequency at which the q-value network are updated. I found that updating the agent policy at every step triggered some form of instabiity and led to the agent to forget all the prevoius learning after few hundred of thousen of frames. By updaing the network weights every four actions the learning was much more stable. The experience batch size also had a somewhat sizable impact on the training outcome. Batches of size 64 presented a more unstable behaviour with  respect of batches of size 32.  
 
-\subsection{A2C (Chris)}
+\subsection{Chris}
 
 In the training of the A2C agent, one factor that was both a difficulty and a surprise was the sensitivity of the agent to changes in the algorithm hyperparameters. For example, the entropy weight was found to be a very important and sensitive hyperparameter. If set slightly too low the agent would revert to selecting a single action with certainty every time. If set too high, the agent would not move significantly from a random sample across the four actions. However, the difference between these outcomes was often a very small change. It is, however, possible that this sensitivity may have been mitigated at the cost of increased training time by reducing the learning rate of the networks.
 
-\subsection{Async (Pete)}
+\subsection{Peter}
 
 Creating a multiprocessing application in python using Keras seemed to be a little awkward, however, PyTorch offered much better support and it became much more straightforward once swapping to use that. It was nice to get a chance to try out PyTorch, and from first use, it seems to be a nicer API than keras.
 
