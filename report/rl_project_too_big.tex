@@ -5,7 +5,7 @@
 % before loading rl_project.
 
 % to compile a camera-ready version, add the [final] option, e.g.:
- \usepackage[final]{rl_project}
+\usepackage[final]{rl_project}
 
 % to avoid loading the natbib package, add option nonatbib:
 % \usepackage[nonatbib]{rl_project}
@@ -46,24 +46,24 @@
 % author name.
 
 \author{
-  Peter Coates
-  \\
-  Department of Computer Science\\
-  University of Bath\\
-  Bath, BA2 7AY \\
-  \texttt{pmc52@bath.ac.uk} \\
+Peter Coates
+\\
+Department of Computer Science\\
+University of Bath\\
+Bath, BA2 7AY \\
+\texttt{pmc52@bath.ac.uk} \\
 \And
-  Christopher Burton\\
-  Department of Computer Science\\
-  University of Bath \\
-  BA2 7AY\\
-  \texttt{cb2516@bath.ac.uk} \\
+Christopher Burton\\
+Department of Computer Science\\
+University of Bath \\
+BA2 7AY\\
+\texttt{cb2516@bath.ac.uk} \\
 \And
-  Mirco Carciani\\
-  Department of Computer Science\\
-  University of Bath \\
-  BA2 7AY\\
-  \texttt{mc2886@bath.ac.uk} \\
+Mirco Carciani\\
+Department of Computer Science\\
+University of Bath \\
+BA2 7AY\\
+\texttt{mc2886@bath.ac.uk} \\
 }
 
 
@@ -74,10 +74,10 @@
 \section{Problem Definition}
 
 % A clear, precise and concise description of your chosen problem, including the states, actions, transition dynamics, and the reward function. You will lose marks for an unclear, incorrect, or incomplete problem definition.
-Breakout, a 2D game. part of the classic Atari 2600 games was chosen as the "problem" to solve for this assignment.
+For this assignment, we chose to implement and train 3 different RL agents to play the game of Breakout, a 2D game part of the classic Atari 2600.
 In the game of Breakout, a player controlls a paddle to bounce a ball against a wall composed by a stack of 6 layers of briks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
 Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right.
-The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Altough Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out what of the avaialbe actions is best to take in each state  to maximize the future reward.  The game can also be played in multi player mode, but for the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen   
+The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Altough Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out what of the avaialbe actions is best to take in each state  to maximize the future reward.  The game can also be played in multi player mode, but for the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen
 
 \section{Background}
 
@@ -88,13 +88,11 @@ One category of reinforcement learning methods that can be used to solve the gam
 These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and  $\theta \in \mathbb{R}^n$ to estimates the action-value functions for each state and therefore determine the optimal action $a$ to take in the state $s$.
 
 Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to achieve and surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
-Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31.8 reached in the same testing conditions by a tester professional human player.
+Mnih et al., 2015 shows how DQN was able to reach an average score of 401 over 30 games, compared to an average score of 31.8 reached in the same testing conditions by a professional human player.
 
-Earlier attempts, to use nonlinear function approximations to estimate the action value function, were made before the introduction of DQN agent (find reference) but presented limited and unstable learning.
+Altough earlier attempts to use nonlinear function approximations as action value function estimator were made before the introduction of DQN agent, these presented limited and unstable learning.
 DQN breakthroughs addressed these limitations, more specially the utilization of a separate target network to estimate the next state maximum action value function combined with the introduction of an experience replay memory to avoid temporally correlated data during training allowed the agent to achieve stable learning and converge to a close to optimal policy.
-
-DQN, of course, comes with its own limitations, more specifically, the generally slow training requiring the agent to play a number of frames in the order of millions to achieve human performances translate is a slow learning process. Hasselt, Guez and Silver, 2016  showed that, like Q-learning, DQN overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during the bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agents.
-
+DQN, of course, comes with its own limitations. The generally slow training requires the agent to play a number of frames in the order of tens of millions to approach human performances. Hasselt, Guez and Silver, 2016  showed that, like Q-learning, DQN tends to overestimates the action value functions which may translate in a sub optimal policy. They showed that this overestimation is due to the fact that, during bootstrapping from the next state (max operation) the same values are used to select and evaluate an action. This limitation was addressed with the introduction of DDQN agent (Hasselt, Guez and Silver, 2016)
 
 \subsection{A2C (Chris)}
 
@@ -116,18 +114,18 @@ The results published by Mnih et al (2016) are impressive and show that after 10
 %A description of the method(s) used to solve your chosen problem, an explanation of how these methods work (in your own words), and an explanation of why you chose these specific methods.
 \subsection{DQN (Mirco)}
 
-As already mentioned in section 2, DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network, namely,
+As already mentioned in section 2, DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network.
 
 \begin{equation}
 Q(S,A) = f(S,A,\theta) = \hat{Q}(S,A,\theta)
 \end{equation}
 
-DQN as well as Q-Learning, uses bootstrapping to update the action value function as shown in the equating below. 
+DQN as well as Q-Learning, uses bootstrapping to update the action value function as shown in the equation below.
 \begin{equation}
 \hat{Q}(S,A,\theta) = \hat{Q}(S,A,\theta) + \alpha * \left( r + \gamma \max_{a} \hat{Q}(S',a,\theta) - \hat{Q}(S,A,\theta) \right)
 \end{equation}
 where $\alpha$ is the learning rate and $\gamma$ is the discounting factor for future rewards.
-With tabular RL methods, the learning process is achieved by directly updating the action value function correspondent to each state-action pair while the agent interacts with the environment. With function approximation methods, the learning happens by updating the function parameters used to estimate the action value functions.
+With tabular RL methods, the learning process is achieved by directly updating the action value function for each state-action pair while the agent interacts with the environment. With function approximation methods, the learning happens by updating the function parameters used to estimate the action value functions.
 More specifically, the function parameters are update in the direction that minimize the loss between the current action value function estimation and its update. The weight update is achieved by a single step of gradient descen as described in equation \ref{eqn:weightupdate}.
 
 \begin{equation}
@@ -137,11 +135,11 @@ More specifically, the function parameters are update in the direction that mini
 
 DQN, as well as, Q learning belongs to a class of algorithm called semi-gradient methods. These methods assume that the next state action value function estimate does not depend on the value of the function parameters. As it is shown in the equation \ref{eqn:weightupdate}, the derivation of the term $\max_{a} \hat{Q}(S',a,\theta_{t}) $ is simply neglected as it is considered to be a constant.
 
-As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t})$ will also change. One of the major breakthroughs introduced by Mnih et al., 2015 is the introduction of two separate networks during the action-value function estimation. One network, called q-value network, is used to estimate the action value functions of the current state S, while a separate target network is used to estimate the action value functions of the next state $S'$ . The weights of the target network are kept constant for a certain number of iteration before being synched with the q-network weights. By using a constant target network, the q-network can be updated towards a stable target limiting the cause on instability during training.
+As a result of the weights update at each step $t$, the action-value function estimation $\hat{Q}(S, A,\theta_{t})$ is updated towards a moving target as the next state maximum action value function $\max_{a} \hat{Q}(S',a,\theta_{t})$ will also change. This phenomena introduces instability during training. One of the major breakthroughs introduced by Mnih et al., 2015 is the introduction of two separate networks during the action-value function estimation. One network, called q-value network, is used to estimate the action value functions of the current state S, while a separate target network is used to estimate the action value functions of the next state $S'$ . The weights of the target network are kept constant for a certain number of iterations before being synched with the q-network weights. By using a constant target network, the q-network can be updated towards a stable target, limiting the cause on instability during training.
 
-DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n \in N$ of experiences is selected and used to update the q-network weights using equations \ref{eqn:weightupdate}. This allows the agent to train on time uncorrelated data. Each experience, stored in the replay buffer, comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the  observed next state $S'$ along an additional Boolean flag which indicates whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random from the buffer of capacity $N$. The second and third strategy utilizes cosine similarity to select and train the agent on  close matching experiences to the observation $S'$. these differ from the fact that in the former only half of the experiences are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation the agent would train and update the action value function for the states that would likely resembles the next state in which it will operate allowing for a more informed decision.
+DQN also uses a replay memory buffer to store the last $N$ interaction with the environment. At each step, a subset $n \in N$ of experiences is selected and used to update the q-network weights using equations \ref{eqn:weightupdate}. This allows the agent to train on time uncorrelated data. Each experience, stored in the replay buffer, comprises of the initial state $S$, the action $A$ taken while in state S, the given reward $R$ and the  observed next state $S'$ along with the information whether or not $S'$ is a terminal state. Our DQN implementation tests three different methods to retrieve the experiences from the experience replay buffer. The first strategy follows the implementation of Mnih et al., 2015 where the $n$ experiences are selected at random from the buffer of capacity $N$. The second and third strategy utilizes cosine similarity to select and train the agent on  close matching experiences to the observation $S'$. These differ from the fact that in the former only half of the experiences are selected using cosine similarity and the second half is selected at random. In the latter, all experiences are selected by cosine similarity. The idea behind this approach is to create a synthetic dejavu. At step $t$, while in state $S$, the agent takes action $A$ and observes state $S'$, therefore $S'$ will be the next state the agent will have to choose an action at. By selecting experience that resemble this observation, the agent would train and update the action value function for the states that would likely resembles the next state in which it will operate, thus allowing for a more informed decision.
 
-DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by choosing the best action $A*$ (leading to the maximum future expected reward) from all available actions in the next states.
+DQN, as well as Q-Learning is an off-policy method. A behavioral $\epsilon-greedy$ policy is used for exploration while the agent policy is updated by choosing the best action $A*$ from all available actions in the next states, namely, leading to the maximum future expected reward.
 The exploration factor $\epsilon$ is reduced from an initial value of 1 to 0.1 over 1M steps and kept constant thereafter.
 
 The loss function used to calculate the weight updates is the Huber loss which improve stability by clipping the gradient of the loss with respect the estimated action value function. Mnih et al., 2015 shows how this improves stability during training.
@@ -213,7 +211,7 @@ The DQN implementation was tested against v5 of the ALE framework, whilst the A2
 %% Explain the differete experiements
 %% PLot the graphs evaluation vs
 
-Different DQN agents with different configurations of memory capacity and experiencereplay selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations. 
+Different DQN agents with different configurations of memory capacity and experiencereplay selection were initially tested for 7 million Frames to attest the best hyper-parameter set. The picture below shows the test score trajectories of 4 different DQN agent configurations.
 \begin{figure}[H]
 \centering
 \includegraphics[scale=0.5]{DQNAgentComparison.PNG}
@@ -221,7 +219,7 @@ Different DQN agents with different configurations of memory capacity and experi
 \label{fig:DQNAgentComparison}
 \end{figure}
 
-Due to the amount of time required to train multiple agent, the training process was then resumed until 24M frames with DQ2 agent only. DQN2 was chosen for two main reasons. DQN2 hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison. Although the performance between DQN1, DQN2 and DQN3 agents do slightly vary, there is not clear cut winner. DQN4 does seem to perform the worse between the tested configurations. More details are given in section 5.
+Due to the amount of time required to train multiple agents, the training process was then resumed up to 24M frames with DQ2 agent only. DQN2 was chosen for two main reasons. DQN2 hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison. Although the performance between DQN1, DQN2 and DQN3 agents do slightly vary, there is not clear cut winner. DQN4 does seem to perform the worse between the tested configurations. More details are given in section 5.
 
 \begin{figure}[H]
 \centering
@@ -241,7 +239,7 @@ Due to the amount of time required to train multiple agent, the training process
 
 Figure \ref{fig:DQN2}-(a) report the median test score calculated as the median over 30 games using a determinist policy, namely, $\epsilon = 0$. The faded bands represent the 95\% confidence interval.
 
-Figure \ref{fig:DQN2}-(b) shows in blue the moving average of the score over 10 games during training. The green trajectory shows the decaying exploration factor $\epsilon$ over the first 1 million frames. 
+Figure \ref{fig:DQN2}-(b) shows in blue the moving average of the score over 10 games during training. The green trajectory shows the decaying exploration factor $\epsilon$ over the first 1 million frames.
 
 
 \subsection{A2C (Chris)}
@@ -279,19 +277,19 @@ The figures clearly show that v5 of the ALE with \emph{repeat\_action\_probabili
 
 
 \section{Discussion}
-    
+
 %An evaluation of how well you solved your chosen problem.
 
 \subsection{DQN (Mirco)}
-Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure \ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to evaluate that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
+Mnih et al., 2015 reports a maximum average score of 401 after 50M frames. We were not able to replicate the same level of performances. The best average score recorded in our implementation of DQN is 51 at around 21M frames (83500-th episode) Figure \ref{fig:DQN2}-(a) shows that although the test score trend appears to be upward, from a simple visual analysis it is possible to conclude that its first derivative with respect to the number of frames seem to be too low to match the score of 401 at 50M frames. Although we could no match Mnih et al., 2015 results, our agent reaches 160\% of human performances.
 \begin{table}[h!]
 \centering
-\begin{tabular}{|c | c | c |} 
- \hline
- Human (Baseline) & DQN Implementation & Mnih et al (2015) DQN (50M frames) \\ [0.5ex] 
- \hline
- 31.8 & 51 & 401  \\ 
- \hline
+\begin{tabular}{|c | c | c |}
+\hline
+Human (Baseline) & DQN Implementation & Mnih et al (2015) DQN (50M frames) \\ [0.5ex]
+\hline
+31.8 & 51 & 401  \\
+\hline
 \end{tabular}
 \end{table}
 It was interesting to notice the early difference in performances amongst DQN agents having different memory buffer sizes and experience replay selection methods shown in Figure\ref{fig:DQNAgentComparison}. DQN 1 and DQN2 only differ in the size of the memory buffer, 200K vs 1M respectively. No appreciable differences were seen during the first 7 million frames. Comparable results were obtained selection half of the training samples using cosine similarity. An overall degradation in performances was recorded while only selecting experiences which resemble the agent observed state $S'$. This might suggest that by only selecting experiences which are similar to the current observation a form of data correlation is introduced.
@@ -300,12 +298,12 @@ It was interesting to notice the early difference in performances amongst DQN ag
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{|c | c | c |} 
- \hline
- Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
- \hline
- 31.8 & 41.4 & 581.6  \\ 
- \hline
+\begin{tabular}{|c | c | c |}
+\hline
+Human (Baseline) & A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex]
+\hline
+31.8 & 41.4 & 581.6  \\
+\hline
 \end{tabular}
 \end{table}
 \emph{Table 5.1: Col 1- Human performance on Breakout from a professional games tester (Mnih et al., 2015). Col2 - Peak performance of A2C implementation in this assignment averaged over 10 episodes. Col3 - Performance of A2C implementation in Wu et al. (2017)  after 50 million timesteps averaged over 100 episodes}
@@ -316,12 +314,12 @@ However, the implementation does not come close to achieving the 100 game runnin
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{|c | c|} 
- \hline
- A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex] 
- \hline
- 3774 & 14464   \\ 
- \hline
+\begin{tabular}{|c | c|}
+\hline
+A2C Implementation & Wu et al. (2017) A2C (50mil timesteps) \\ [0.5ex]
+\hline
+3774 & 14464   \\
+\hline
 \end{tabular}
 \end{table}
 \emph{Table 5.2: Col 1- Episodes required for 10 episode average to surpass human performance Col2 - Episodes required for Wu et al. (2017) A2C implementation to surpass human performance over 100 episode average.}
@@ -330,7 +328,7 @@ Table 5.2 compounds the idea that the agent implemented in this paper learns qui
 
 \subsection{Async Q-Learning (Peter)}
 
-The performance of Async n-step Q-Learning and DQN was similar with both achieving an average score around 50 after processing 24 million frames when trained against v5 of the ALE. 
+The performance of Async n-step Q-Learning and DQN was similar with both achieving an average score around 50 after processing 24 million frames when trained against v5 of the ALE.
 
 Comparing the results from Async n-step Q-Learning and A2C when trained against v4 of the ALE shows that the configuration used for A2C  learns more quickly, however, it then becomes unstable. The Async n-step Q-Learning was steadier, but kept on increasing, managing an average score of over 100 after processing 24 million frames.
 
@@ -361,7 +359,7 @@ It would also be interesting to investigate the asynchronous version of advantag
 %A discussion of your personal experience with the project, such as difficulties or pleasant surprises you encountered while completing it.
 
 \subsection{DQN (Mirco)}
-DQN was quite fiddly to tune. Parameters that seems not to bear a great deal of impotance over the training process actaully affected results quite heavily. For instance, a key factor for the agent learning stability was frequency at which the q-value network are updated. I found that updating the agent policy at every step triggered some form of instabiity and led to the agent to forget all the prevoius learning after few hundred of thousen of frames. By updaing the network weights every four actions the learning was much more stable. The experience batch size also had a somewhat sizable impact on the training outcome. Batches of size 64 presented a more unstable behaviour with  respect of batches of size 32.  
+DQN was quite fiddly to tune. Parameters that seems not to bear a great deal of impotance over the training process actaully affected results quite heavily. For instance, a key factor for the agent learning stability was frequency at which the q-value network are updated. I found that updating the agent policy at every step triggered some form of instabiity and led to the agent to forget all the prevoius learning after few hundred of thousen of frames. By updaing the network weights every four actions the learning was much more stable. The experience batch size also had a somewhat sizable impact on the training outcome. Batches of size 64 presented a more unstable behaviour with  respect of batches of size 32.
 
 \subsection{A2C (Chris)}
 
@@ -373,7 +371,7 @@ Creating a multiprocessing application in python using Keras seemed to be a litt
 
 \section*{References}
 
-\small 
+\small
 
 Graesser, L.H. and Keng, W.L., 2019. \emph{Foundations of deep reinforcement learning: theory and practice in Python}. First edition. Pearson addison-wesley data \& analytics series. Boston: Addison-Wesley.
 
@@ -423,18 +421,18 @@ Taken from the course notes.
 \State Initialise action-value network $\hat{q}_{1}$ with parameters $\boldsymbol{\theta}_{1} \in \mathbb{R}^{d}$ arbitrarily
 \State Initialise target action-value network $\hat{q}_{2}$ with parameters $\boldsymbol{\theta}_{2}=\boldsymbol{\theta}_{1}$
 \For{each episode}
-    \State $\text{Initialise } S$
-    \For{for each step of episode}
-        \State Choose action $A$ in state $S$ using policy derived from  $\hat{q}_{1}\left(S, \cdot, \theta_{1}\right)$
-        \State Take action $A$ observe reward $R$ and next-state $S^{\prime}$
-        \State Store transition $\left(S, A, R, S^{\prime}\right)$ in $D$
-        \For{each transition $\left(S_{j}, A_{j}, R_{j}, S_{j}^{\prime}\right)$ in minibatch sampled from $D$}
-            \State $y= \begin{cases}R_{j} & \text { if } S_{j}^{\prime} \text { is terminal } \\ R_{j}+\gamma \max _{a^{\prime}} \hat{q}_{2}\left(S_{j}^{\prime}, a^{\prime}, \boldsymbol{\theta}_{2}\right) & \text { otherwise }\end{cases}$
-            \State $\hat{y}=\hat{q}_{1}\left(S_{j}, A_{j}, \boldsymbol{\theta}_{1}\right)$
-            \State Perform gradient descent step $\nabla_{\theta_{1}} L_{\delta}(y, \hat{y})$
-        \EndFor
-    \State Every $C$ time-steps, update $\boldsymbol{\theta}_{2}=\boldsymbol{\theta}_{1}$
-    \EndFor
+\State $\text{Initialise } S$
+\For{for each step of episode}
+\State Choose action $A$ in state $S$ using policy derived from  $\hat{q}_{1}\left(S, \cdot, \theta_{1}\right)$
+\State Take action $A$ observe reward $R$ and next-state $S^{\prime}$
+\State Store transition $\left(S, A, R, S^{\prime}\right)$ in $D$
+\For{each transition $\left(S_{j}, A_{j}, R_{j}, S_{j}^{\prime}\right)$ in minibatch sampled from $D$}
+\State $y= \begin{cases}R_{j} & \text { if } S_{j}^{\prime} \text { is terminal } \\ R_{j}+\gamma \max _{a^{\prime}} \hat{q}_{2}\left(S_{j}^{\prime}, a^{\prime}, \boldsymbol{\theta}_{2}\right) & \text { otherwise }\end{cases}$
+\State $\hat{y}=\hat{q}_{1}\left(S_{j}, A_{j}, \boldsymbol{\theta}_{1}\right)$
+\State Perform gradient descent step $\nabla_{\theta_{1}} L_{\delta}(y, \hat{y})$
+\EndFor
+\State Every $C$ time-steps, update $\boldsymbol{\theta}_{2}=\boldsymbol{\theta}_{1}$
+\EndFor
 \EndFor
 \end{algorithmic}
 
@@ -472,19 +470,19 @@ From Mnih et al (2016)
 \State Initialise network gradients $d\theta \gets 0$
 \State Get initial stats $s$
 \While{$T <= T_{\max}$}
-    \State Take action $a$ with $\epsilon$-greedy policy based on $Q\left(s,a;\theta\right)$
-    \State Receive new state $s^{\prime}$ and reward $r$
-    \State $y= \begin{cases}r & \text { for terminal } s^{\prime} \\ r + \gamma \max _{a^{\prime}} Q\left(s^{\prime}, a^{\prime}, \theta^{-}\right) & \text { for non terminal } s^{\prime}\end{cases}$
-    \State Accumulate gradients wrt $\theta$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\right)\right)^{2}}{\delta\theta}$
-    \State $s = s^{\prime}$
-    \State $T \gets T + 1$ and $t \gets t + 1$
-    \If{$T$ mod $I_{target} == 0$}
-        \State Update the target network $\theta^{-} \gets \theta$
-    \EndIf
-    \If{$t$ mod $I_{AsyncUpdate} == 0$ or $s$ is terminal}
-        \State Perform asynchronous update ot $\theta$ using $d\theta$
-        \State Clear gradients $d\theta \gets 0$
-    \EndIf
+\State Take action $a$ with $\epsilon$-greedy policy based on $Q\left(s,a;\theta\right)$
+\State Receive new state $s^{\prime}$ and reward $r$
+\State $y= \begin{cases}r & \text { for terminal } s^{\prime} \\ r + \gamma \max _{a^{\prime}} Q\left(s^{\prime}, a^{\prime}, \theta^{-}\right) & \text { for non terminal } s^{\prime}\end{cases}$
+\State Accumulate gradients wrt $\theta$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\right)\right)^{2}}{\delta\theta}$
+\State $s = s^{\prime}$
+\State $T \gets T + 1$ and $t \gets t + 1$
+\If{$T$ mod $I_{target} == 0$}
+\State Update the target network $\theta^{-} \gets \theta$
+\EndIf
+\If{$t$ mod $I_{AsyncUpdate} == 0$ or $s$ is terminal}
+\State Perform asynchronous update ot $\theta$ using $d\theta$
+\State Clear gradients $d\theta \gets 0$
+\EndIf
 \EndWhile
 
 \end{algorithmic}
@@ -502,25 +500,25 @@ From Mnih et al (2016)
 \State Initialise thread-specific parameters $\theta^\prime \gets \theta$
 \State Get initial stats $s$
 \While{$T <= T_{\max}$}
-    \State Clear gradients $d\theta \gets 0$
-    \State Synchronize thread-specific parameters $\theta^\prime \gets \theta$
-    \State $t_{start} = t$
-    \State Get state $s_t$
-    \While{not terminal $s_t$ and $t-t_{start}<t_{max}$}
-        \State Take action $a_t$ with $\epsilon$-greedy policy based on $Q\left(s_t,a;\theta^\prime\right)$
-        \State Receive new state $s_{t+1}$ and reward $r_t$
-        \State $t \gets t + 1$
-        \State $T \gets T + 1$
-    \EndWhile
-    \State $R= \begin{cases}0 & \text { for terminal } s_t \\ \max _{a} Q\left(s_t, a, \theta^{-}\right) & \text { for non terminal } s_t\end{cases}$
-    \For{$i \in \{t-1,...,t_{start}\}$}
-        \State $R \gets r_i + \gamma R$
-        \State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
-    \EndFor
-    \State Perform asynchronous update ot $\theta$ using $d\theta$
-    \If{$T$ mod $I_{target} == 0$}
-        \State Update the target network $\theta^{-} \gets \theta$
-    \EndIf
+\State Clear gradients $d\theta \gets 0$
+\State Synchronize thread-specific parameters $\theta^\prime \gets \theta$
+\State $t_{start} = t$
+\State Get state $s_t$
+\While{not terminal $s_t$ and $t-t_{start}<t_{max}$}
+\State Take action $a_t$ with $\epsilon$-greedy policy based on $Q\left(s_t,a;\theta^\prime\right)$
+\State Receive new state $s_{t+1}$ and reward $r_t$
+\State $t \gets t + 1$
+\State $T \gets T + 1$
+\EndWhile
+\State $R= \begin{cases}0 & \text { for terminal } s_t \\ \max _{a} Q\left(s_t, a, \theta^{-}\right) & \text { for non terminal } s_t\end{cases}$
+\For{$i \in \{t-1,...,t_{start}\}$}
+\State $R \gets r_i + \gamma R$
+\State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
+\EndFor
+\State Perform asynchronous update of $\theta$ using $d\theta$
+\If{$T$ mod $I_{target} == 0$}
+\State Update the target network $\theta^{-} \gets \theta$
+\EndIf
 \EndWhile
 
 \end{algorithmic}
