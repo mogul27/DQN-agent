@@ -101,10 +101,10 @@ A Policy-Gradient method that has been shown to be effective on similar tasks to
 
 \subsection{Async Q-Learning}
 
-Mnih et al (2016) present asynchronous variants of reinforcement learning algorithms including both Q-Learning and Actor-Critic (A3C).
-The paper claims the asynchronous variants can produce excellent results on single multi-core CPUs with training times of just a few hours. The results published by Mnih et al (2016) are impressive and show that after 10 hours training with breakout, Async Q-Learning scored 240 and A3C scored 460, whilst DQN only managed 25.
+Mnih et al (2016) presented asynchronous variants of Q-Learning.
+The paper claims the asynchronous variant can produce excellent results on single multi-core CPUs with training times of just a few hours. The results published by Mnih et al (2016) are impressive and show that after 10 hours training with Breakout, Async Q-Learning scored 240, whilst DQN only managed 25.
 
-Unlike DQN, the asynchronous methods do not require an experience replay memory as multiple agents working in parallel means that the data is fragmented and sufficiently decorellated.
+Unlike DQN, the asynchronous methods do not require a replay memory buffer as multiple agents working in parallel means that the data is fragmented and sufficiently decorellated.
 
 \section{Method}
 %A description of the method(s) used to solve your chosen problem, an explanation of how these methods work (in your own words), and an explanation of why you chose these specific methods.
@@ -168,7 +168,7 @@ Where:
 A(s_{t}, a_{t}) = Q_{w}(s_{t}, a_{t}) - V_{v}(s_{t}) = r_{t+1} + \gamma V_{v}(s_{t+1}) - V_{v}(s_{t})
 \end{equation}
 
-The first component of the actor loss function is the gradient in parameter space (delta). This value represents the action taken and whether it followed or went against the current actor policy. The delta term implementation in this assignment follows an extended version of the method followed by Wang (2021).The advantage component, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state (Positive advantage) or worse (Negative advantage). By multiplying the gradient of action selection with respect to the current policy and a positive or negative advantage value, the actor evaluates the action taken and current policy against the valuation states from the critic. The agent is encouraged to reinforce the current policy if the action taken follows the current policy and the action taken resulted in a value better than the average value for that state or the action taken went against policy which resulted in a lower than average value. Conversely, the agent is encouraged to update away from the current policy if the action followed the current policy and resulted in a worse value than average for the state or if the agent went against current policy and the resulting value was better than the average for the state. Since log probabilities do not tend to 0 when multiplied, they provide better numerical stability during training.
+The first component of the actor loss function is the gradient in parameter space (delta). This value represents the action taken and whether it followed or went against the current actor policy. The delta term implementation in this assignment follows an extended version of the method followed by Wang (2021). The advantage component, which represents the reinforcement signal from the critic, tells the actor whether the action taken was better than the average reward for that state (Positive advantage) or worse (Negative advantage). By multiplying the gradient of action selection with respect to the current policy and a positive or negative advantage value, the actor evaluates the action taken and current policy against the valuation states from the critic. The agent is encouraged to reinforce the current policy if the action taken follows the current policy and the action taken resulted in a value better than the average value for that state or the action taken went against policy which resulted in a lower than average value. Conversely, the agent is encouraged to update away from the current policy if the action followed the current policy and resulted in a worse value than average for the state or if the agent went against current policy and the resulting value was better than the average for the state. Since log probabilities do not tend to 0 when multiplied, they provide better numerical stability during training.
 
 Initial runs showed that even with very small learning rates (1e-5 and below), the agent would find a local minima, selecting the same action every time. Thus, an entropy term has been added to improve training stability. The entropy term, originally proposed by William and Peng (1991) for use with the REINFORCE algorithm, encourages the actor to output a distribution with higher entropy (More even probabilities) by penalising low entropy outputs through the loss function. For example, in an environment with four actions such as Breakout, a maximum entropy output distribution would have a 0.25 probability of selecting each action. The inclusion of the entropy term yields a new update equation below where  $\beta$ is the entropy weight, which is a hyperparameter that controls how much the actor loss comprises of the entropy value.
 
@@ -178,25 +178,24 @@ Initial runs showed that even with very small learning rates (1e-5 and below), t
 
 \subsection{Async Q-Learning}
 
-Async Q-Learning was chosen as it is similar to DQN, but promises improved learning in a shorter time. \nameref{async_q_pseudo}
+The third method chosen to solve our specific problem of Atari Breakout is Asynchronous Q-Learning.
 
-Like DQN, Async Q-Learning uses an $\epsilon$-greedy policy based on a value network to select actions to take and then uses a target network to estimate an action value that is used to calculate the loss.
-The weights in the target network are occasionally reset to match the value network.
+Like DQN, Async Q-Learning uses a value network to select actions to take and then uses a target network to estimate an action value that is used to calculate the loss. The weights in the target network are occasionally reset to match the value network.
 
 Where Async Q-Learning differs from DQN is that it runs multiple worker agents in separate processes which share the value and target networks.
+
 Each worker agent uses local copies of the value and target networks to calculate the losses and gradients, then applies them to the  shared networks every few steps as a single batch.
 Once the worker agent has updated the shared network, it refreshes the weights in its local copies to match shared ones.
 
 As the updates are done in batches, it is easy to also implement the n-step variant of Async Q-Learning, which according to Mnih et al (2016) offers further performance improvements. (\nameref{async_q_n_step_pseudo})
 
-Having multiple worker agents running at the same time means that different areas of the game will be explored at the same time.
-The different worker agents were also given different epsilon values for their $\epsilon$-greedy policies to further increase the variety of exploration.
-Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run tests meant a thorough examination of the impacts of these hyperparameters was not possible.
+Having multiple worker agents means that different areas of the game will be explored at the same time.
+The different worker agents were given different epsilon values for their $\epsilon$-greedy policies to increase the variety of exploration.
+Some experimentation was also done using both decaying epsilon values, and learning rates. However, the time taken to run tests prevented a thorough examination.
 
-A controller process handles the creation of multiple workers and a stats collector.
-The controller gives each worker a queue which allows communication between controller and workers.
-Each worker starts the ALE environment and plays games of breakout letting the controller know the results of each game.
-The controller keeps track of the total number of episodes completed by all the workers, and uses another process to play games with a policy created from a copy of the shared value network to provide a measure of how well the training is going.
+A controller process handles the creation of, and communication with, multiple workers and a stats collector.
+Each worker plays games of Breakout letting the controller know the results.
+The controller keeps track of the total number of episodes completed by all the workers, and uses the stats collector to provide a measure of how well the training is going.
 
 \section{Results}
 %result comparison between the 3 approaches.
@@ -204,7 +203,9 @@ The controller keeps track of the total number of episodes completed by all the 
 %how well do they perform is absolute terms
 %how do they compare  with respect to a human player
 
-The DQN implementation was tested against v5 of the ALE framework, whilst the A2C implemtnations was tested against v4 of the ALE framework. The main difference between the two ALE versions is that v5 introduces a \emph{repeat\_action\_probability=0.25}. This  means that 25\% of the time the action sent to ALE is ignored, and the previous action is used instead. This makes the ALE environment stochastic and harder to train an agent against. For the following results, DQN was trained against v5, A2C was trained against v4, and Asynch Q-Learning was trained against both.
+Both v4 and v5 of the Arcade Learning Environment (ALE) were used during testing. 
+
+v5 introduces a \emph{repeat\_action\_probability=0.25} meaning that 25\% of the time the action sent by the agent to the Breakout game is ignored, and the previous action is used instead. This makes the environment stochastic and harder to train an agent against. The following results were obtained by training DQN against v5, A2C against v4, and Asynch n-step Q-Learning against both.
 
 
 \subsection{DQN}
@@ -225,12 +226,12 @@ Due to the amount of time required to train multiple agents, the training proces
 \centering
 \begin{subfigure}{0.49\textwidth}
 \centering
-\includegraphics[scale=0.42]{DQNTestScore.PNG}
+\includegraphics[scale=0.39]{DQNTestScore.PNG}
 \captionof{figure}{Test score over 30 games with epsilon = 0}
 \end{subfigure}
 \begin{subfigure}{0.49\textwidth}
 \centering
-\includegraphics[scale=0.42]{DQNMovAvgTraining.PNG}
+\includegraphics[scale=0.39]{DQNMovAvgTraining.PNG}
 \captionof{figure}{10 games score moving average during training}
 \end{subfigure}
 \caption{DQN2 performances}
@@ -259,9 +260,7 @@ From episode 1000, the agent shows steady and notable improvement, maintaining a
 
 \subsection{Async Q-Learning}
 
-As expected Asynch n-step Q-Learning (using n=8) learnt more quickly than the single step version. So, the majority of tests were performed with the n-step vesion.
-
-The figures below show the results from a long run of approximately 40 hours (24 million frames). A learning rate of 0.0001, epsilon values in the $\epsilon$-greedy policies varied in different processes and were reduced from a maximum of 0.4 down to 0.1 after approximately a million frames.
+The figures below show the results from a long run of approximately 40 hours (24 million frames) using Async n-step Q-Learning (n=8). A learning rate of 0.0001, epsilon values in the $\epsilon$-greedy policies varied in different processes and were reduced from a maximum of 0.4 down to 0.1 after approximately a million frames.
 
 \begin{figure}[H]
 \centering
@@ -326,7 +325,7 @@ Comparing the results from Async n-step Q-Learning and A2C when trained against 
 
 The results obtained from running Async n-step Q-Learning did not match the results and time scales achieved by Mnih et al (2016). However, they completed approx 25 epochs in 10 hours to get scores in excess of 250. A single epoch being 4 million frames giving 100 million frames in 10 hours. In contrast our implementation is 16 times slower, processing about 6 million frames in 10 hours.
 
-Our results compare favourably with those from Mnih et al (2016), as we reached average scores of 50 in approximately half the number of frames. Although, we have not trained for long enough to compare final scores.
+Our results compare favourably with those from Mnih et al (2016). We reached a score of 50 in half the number of frames. However, we have not trained over enough frames to compare final scores.
 
 \section{Future Work}
 
@@ -365,35 +364,48 @@ Creating a multiprocessing application in python using Keras seemed to be a litt
 
 Graesser, L.H. and Keng, W.L., 2019. \emph{Foundations of deep reinforcement learning: theory and practice in Python}. First edition. Pearson addison-wesley data \& analytics series. Boston: Addison-Wesley.
 
-Hasselt, H. van, Guez, A. and Silver, D., 2016. Deep Reinforcement Learning with Double Q-Learning. \emph{Proceedings of the AAAI Conference on Artificial Intelligence} [Online], 30(1). Available from: https://doi.org/10.1609/aaai.v30i1.10295 [Accessed 31 December 2022].
+Hasselt, H. van, Guez, A. and Silver, D., 2016. Deep Reinforcement Learning with Double Q-Learning. \emph{Proceedings of the AAAI Conference on Artificial Intelligence} [Online], 30(1). \\
+Available from: https://doi.org/10.1609/aaai.v30i1.10295 [Accessed 31 December 2022].
 
-Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic}. [Online]. Available from: https://doi.org/10.48550/ARXIV.1806.06914 [Accessed 30 December 2022].
+Li, S., Bing, S. and Yang, S., 2018. \emph{Distributional Advantage Actor-Critic}. [Online]. \\
+Available from: https://doi.org/10.48550/ARXIV.1806.06914 [Accessed 30 December 2022].
 
 Machado, M.C., Bellemare, M.G., Talvitie, E., Veness, J., Hausknecht, M. and Bowling, M., 2018. Revisiting the Arcade Learning Environment: Evaluation Protocols and Open Problems for General Agents [Online]. \emph{Journal of Artificial Intelligence Research}  Available from: https://www.ijcai.org/proceedings/2018/0787.pdf  [Accessed 31 December 2022].
 
-Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.A., Veness, J., Bellemare, M.G., Graves, A., Riedmiller, M., Fidjeland, A.K., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S. and Hassabis, D., 2015. Human-level control through deep reinforcement learning. \emph{Nature} [Online], 518(7540), pp.529–533. Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 2022]
+Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.A., Veness, J., Bellemare, M.G., Graves, A., Riedmiller, M., Fidjeland, A.K., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S. and Hassabis, D., 2015. Human-level control through deep reinforcement learning. \emph{Nature} [Online], 518(7540), pp.529–533. \\
+Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 2022]
 
-Narasimhan, K., Kulkarni, T. and Barzilay, R., 2015. Language Understanding for Text-based Games using Deep Reinforcement Learning. \emph{Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing} [Online], EMNLP 2015, Lisbon, Portugal. Lisbon, Portugal: Association for Computational Linguistics, pp.1–11. Available from: https://doi.org/10.18653/v1/D15-1001 [Accessed 3 January 2023].
+Narasimhan, K., Kulkarni, T. and Barzilay, R., 2015. Language Understanding for Text-based Games using Deep Reinforcement Learning. \emph{Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing} [Online], EMNLP 2015, Lisbon, Portugal. Lisbon, Portugal: Association for Computational Linguistics, pp.1–11. \\
+Available from: https://doi.org/10.18653/v1/D15-1001 [Accessed 3 January 2023].
 
-Schaul, T., Quan, J., Antonoglou, I. and Silver, D., 2016. \emph{Prioritized Experience Replay}. Available from: http://arxiv.org/abs/1511.05952.
+Schaul, T., Quan, J., Antonoglou, I. and Silver, D., 2016. \emph{Prioritized Experience Replay}. \\
+Available from: http://arxiv.org/abs/1511.05952.
 
-Schulman, J., Moritz, P., Levine, S., Jordan, M. and Abbeel, P., 2015. \emph{High-Dimensional Continuous Control Using Generalized Advantage Estimation}  [Online]. Available from: https://doi.org/10.48550/ARXIV.1506.02438 [Accessed 30 December 2022].
+Schulman, J., Moritz, P., Levine, S., Jordan, M. and Abbeel, P., 2015. \emph{High-Dimensional Continuous Control Using Generalized Advantage Estimation}  [Online]. \\
+Available from: https://doi.org/10.48550/ARXIV.1506.02438 [Accessed 30 December 2022].
 
-Silver, D., Huang, A., Maddison, C.J., Guez, A., Sifre, L., van den Driessche, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot, M., Dieleman, S., Grewe, D., Nham, J., Kalchbrenner, N., Sutskever, I., Lillicrap, T., Leach, M., Kavukcuoglu, K., Graepel, T. and Hassabis, D., 2016. Mastering the game of Go with deep neural networks and tree search. \emph{Nature} [Online], 529(7587), pp.484–489. Available from: https://doi.org/10.1038/nature16961. [Accessed 23rd December 2022]
+Silver, D., Huang, A., Maddison, C.J., Guez, A., Sifre, L., van den Driessche, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot, M., Dieleman, S., Grewe, D., Nham, J., Kalchbrenner, N., Sutskever, I., Lillicrap, T., Leach, M., Kavukcuoglu, K., Graepel, T. and Hassabis, D., 2016. Mastering the game of Go with deep neural networks and tree search. \emph{Nature} [Online], 529(7587), pp.484–489. \\
+Available from: https://doi.org/10.1038/nature16961. [Accessed 23rd December 2022]
 
-Steinbach, A. 2018. \emph{RL introduction: simple actor-critic for continuous actions} [Online]. Medium. Available from: https://medium.com/@asteinbach/rl-introduction-simple-actor-critic-for-continuous-actions-4e22afb712 [Accessed 22nd December 2022]
+Steinbach, A. 2018. \emph{RL introduction: simple actor-critic for continuous actions} [Online]. Medium. \\
+Available from: https://medium.com/@asteinbach/rl-introduction-simple-actor-critic-for-continuous-actions-4e22afb712 [Accessed 22nd December 2022]
 
 Sutton, R.S. and Barto, A.G., 2018. \emph{Reinforcement learning: an introduction}. Second edition. Adaptive computation and machine learning series. Cambridge, Massachusetts: The MIT Press.
 
-Williams, R.J. and Peng, J., 1991. Function Optimization using Connectionist Reinforcement Learning Algorithms. \emph{Connection Science} [Online], 3(3), pp.241–268. Available from: https://doi.org/10.1080/09540099108946587. [Accessed 27th December 2022]
+Williams, R.J. and Peng, J., 1991. Function Optimization using Connectionist Reinforcement Learning Algorithms. \emph{Connection Science} [Online], 3(3), pp.241–268. \\
+Available from: https://doi.org/10.1080/09540099108946587. [Accessed 27th December 2022]
 
-Wu, Y., Mansimov, E., Liao, S., Grosse, R. and Ba, J., 2017. \emph{Scalable trust-region method for deep reinforcement learning using Kronecker-factored approximation} [Online]. Available from: https://doi.org/10.48550/ARXIV.1708.05144 [Accessed 30 December 2022].
+Wu, Y., Mansimov, E., Liao, S., Grosse, R. and Ba, J., 2017. \emph{Scalable trust-region method for deep reinforcement learning using Kronecker-factored approximation} [Online]. \\
+Available from: https://doi.org/10.48550/ARXIV.1708.05144 [Accessed 30 December 2022].
 
-Wang, M. 2021. \emph{Advantage Actor Critic Tutorial: minA2C} [Online]. Medium. Available from: https://towardsdatascience.com/advantage-actor-critic-tutorial-mina2c-7a3249962fc8 [Accessed 24th December 2022].
+Wang, M. 2021. \emph{Advantage Actor Critic Tutorial: minA2C} [Online]. Medium. \\
+Available from: https://towardsdatascience.com/advantage-actor-critic-tutorial-mina2c-7a3249962fc8 [Accessed 24th December 2022].
 
-Wu, Y., Mansimov, E., Liao, S., Radford, A. and Schulman, J., 2017. \emph{OpenAI Baselines: ACKTR \& A2C} [Online].OpenAI. Available from: https://openai.com/blog/baselines-acktr-a2c/ [Accessed 30 December 2022].
+Wu, Y., Mansimov, E., Liao, S., Radford, A. and Schulman, J., 2017. \emph{OpenAI Baselines: ACKTR \& A2C} [Online].OpenAI. \\
+Available from: https://openai.com/blog/baselines-acktr-a2c/ [Accessed 30 December 2022].
 
-Yoon, C. 2019. \emph{Understanding Actor Critic Methods and A2C} [Online]. Towards Data Science. Available from: https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f [Accessed 24th December 2022]
+Yoon, C. 2019. \emph{Understanding Actor Critic Methods and A2C} [Online]. Towards Data Science. \\
+Available from: https://towardsdatascience.com/understanding-actor-critic-methods-931b97b6df3f [Accessed 24th December 2022]
 
 Mnih, V., et al., 2016. \emph{Asynchronous Methods for Deep Reinforcement Learning. ArXiv} [Online] 1602.01783. \\
 Available from: https://arxiv.org/pdf/1602.01783.pdf [Accessed 28 Dec 2022]
