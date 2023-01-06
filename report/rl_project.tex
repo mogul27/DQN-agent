@@ -74,8 +74,8 @@
 \section{Problem Definition}
 
 % A clear, precise and concise description of your chosen problem, including the states, actions, transition dynamics, and the reward function. You will lose marks for an unclear, incorrect, or incomplete problem definition.
-Breakout, a 2D game. part of the classic Atari 2600 games was chosen as the "problem" to solve for this assignment.
-In the game of Breakout, a player controls a paddle to bounce a ball against a wall composed by a stack of 6 layers of bricks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when 5 lives are lost.
+For this assignment, we chose to implement and train 3 different RL agents to play the game of Breakout, a 2D game part of the classic Atari 2600.
+In the game of Breakout, a player controls a paddle to bounce a ball against a wall composed by a stack of 6 layers of briks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
 Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right.
 
 The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many brinks as possible within the 5 lives available. No points are removed when a life is lost. Although Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out which of the available actions is best to take in each state to maximize the future reward. For the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen.
@@ -110,7 +110,7 @@ Unlike DQN, the asynchronous methods do not require an experience replay memory 
 %A description of the method(s) used to solve your chosen problem, an explanation of how these methods work (in your own words), and an explanation of why you chose these specific methods.
 \subsection{DQN}
 
-DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network, namely,
+DQN was derived from Q-Learning where the action-value function is estimated by a nonlinear function, more precisely, by a deep neural network.
 
 \begin{equation}
 Q(S,A) = f(S,A,\theta) = \hat{Q}(S,A,\theta)
@@ -219,7 +219,7 @@ Different DQN agents with different configurations of memory capacity and experi
 \label{fig:DQNAgentComparison}
 \end{figure}
 
-Due to the amount of time required to train multiple agent, the training process was then resumed until 24M frames with DQN2 agent only. There was no clearcut winner from the initial test, so DQN2 was chosen because its hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison.
+Due to the amount of time required to train multiple agents, the training process was then resumed up to 24M frames with DQN2 agent only. There was no clearcut winner from the initial test, so DQN2 was chosen because its hyper-parameters mimic the values used by Mnih et al., 2015 which gives a clear baseline for performance comparison.
 
 \begin{figure}[H]
 \centering
@@ -251,10 +251,10 @@ From episode 1000, the agent shows steady and notable improvement, maintaining a
 \end{wrapfigure}
 
 
- The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233. 
- 
- Beyond this point the agent shows evidence of overtraining. Performance significantly deteriorates to the level seen in the earliest episodes. 
- 
+ The agent performance peaks around episode 3750 with a 10 game average of 41.4 and peak single game performance of 233.
+
+ Beyond this point the agent shows evidence of overtraining. Performance significantly deteriorates to the level seen in the earliest episodes.
+
  Observing the actor's softmax output, we see that the agent is outputting almost the same probabilities for every state with very little change in the distribution between states or between episodes.
 
 \subsection{Async Q-Learning}
@@ -505,7 +505,7 @@ From Mnih et al (2016)
         \State $R \gets r_i + \gamma R$
         \State Accumulate gradients wrt $\theta^\prime$: $d\theta \gets d\theta + \frac{\delta\left( y-Q\left(s, a, \theta\prime\right)\right)^{2}}{\delta\theta\prime}$
     \EndFor
-    \State Perform asynchronous update ot $\theta$ using $d\theta$
+    \State Perform asynchronous update of $\theta$ using $d\theta$
     \If{$T$ mod $I_{target} == 0$}
         \State Update the target network $\theta^{-} \gets \theta$
     \EndIf
