@@ -39,6 +39,19 @@ And, you will also need the following for the neural networks:
 
 ## DQN
 
+Main source code is in:
+
+- DQN_agent.py
+
+All necessary classes and methods to run the DQN agent are within this file.
+The file is set up to load an existing trained model (q_net_83500.h5 included in the submission) and watch the agent play the game of Breakout.
+To train the agent from scratch, uncomment the correspondent code at the bottom of the file.
+On Google Colab with standard GPUs, this implementation should average 250k frames/hour. Therefore, it should take around 8 hours to train the agent for 2M frames. At the 2M frames mark the agent should consistently hit 20 to 30 points per game.
+Defult settings intialize a memory buffer capacity of 1M experiences. To reduce RAM consumption, the memory buffer capacity can be reduced by setting a lower value of the input argument `memory_size` in the DQN_Agent constructor call.
+The actual agent training starts after 50000 random steps. To commence the training earlier, the memeber `step_threshold` of the class `DQN_Agent` can be set accordingly.
+
+
+
 ## Advantage Actor Critic (A2C)
 
 ## Asynchronous n-step Q-Learning

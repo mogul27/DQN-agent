@@ -41,7 +41,7 @@ class DQN_Agent:
         self.sync_steps = 30000
         self.memory = Memory(N=memory_size, save=save)
         self.history = Training_History()
-        self.step_threshold = 30000
+        self.step_threshold = 50000
         self.save_folder = folder
         self.test_eps = 0.0
         self.save_each_n_episodes = 50
@@ -103,7 +103,7 @@ class DQN_Agent:
             action = np.argmax(q_vals)
         return action
 
-    def resume_training(self, env, train_frames=100, last_step=0, last_episode=0, last_epsilon=1,  frame_skip = 1):
+    def resume_training(self, env, train_frames=100, last_step=0, last_episode=0, last_epsilon=1,  frame_skip = 4):
         """this methods let you resume training from anyu point in history"""
         self.steps = last_step
         self.eps = last_epsilon
@@ -111,7 +111,7 @@ class DQN_Agent:
         self.train_by_frames(env, n_frames=train_frames, frame_skip=frame_skip, batch_size=32, n_ep=last_episode)
         return
 
-    def resume_training_from_history(self, env, train_frames=100, frame_skip = 1):
+    def resume_training_from_history(self, env, train_frames=100, frame_skip = 4):
         """this methods let you resume training from a checkpoint in history"""
         last_episode =  self.history.history['episode'][-1]
         last_step = sum(self.history.history['steps'])
@@ -119,7 +119,7 @@ class DQN_Agent:
         self.resume_training(env, train_frames=train_frames, last_step=last_step, last_episode=last_episode, last_epsilon=last_epsilon,  frame_skip = frame_skip)
         return
 
-    def train_by_frames(self, env, n_frames=10000, frame_skip = 1, batch_size=32, n_ep=-1):
+    def train_by_frames(self, env, n_frames=10000, frame_skip = 4, batch_size=32, n_ep=-1):
         """This method start the train the agent for a given number of frames"""
         preprocess = PreProcessing()
         self.history.start_time()
@@ -502,7 +502,6 @@ class Memory:
         return idxs
         
     def get_experiences_in_batch(self, last_obs, batch_size=16, batch_idxs=np.array([]) ,len_states=4):
-
         if batch_idxs.shape[0] == 0:
             if isinstance(last_obs, list):
                 batch_idxs = np.random.randint(len_states, self.get_upper_bound(), batch_size)
@@ -588,7 +587,7 @@ class Memory:
             self.buffer2 = pickle.load(file)
     
 
-class DQN_utils:
+class DQN_test:
     """Class that gathers a bunch of method to test the DQN agent"""
     def __init__(self) -> None:
         pass
@@ -608,7 +607,7 @@ class DQN_utils:
         n_nets  = len(net_list)
         for i, net in enumerate(net_list):
             print(f" {i}/{n_nets}. Testing {net}.")
-        net_score = DQN_utils.test_agent(env, agent, net)
+        net_score = DQN_test.test_agent(env, agent, net)
         net_scores[net] = net_score
         return net_scores
 
@@ -616,7 +615,7 @@ class DQN_utils:
     def test_agent_performances():
         env = gym.make('ALE/Breakout-v5', render_mode=None)
         agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING_LINEAR, memory_size=100000, save=False, verbose=1)
-        score_dict = DQN_utils.test(env, "./")
+        score_dict = DQN_test.test(env, "./")
         with open('./mirco_folder/DQN9/score_test_latest.pickle', 'wb') as file:
             pickle.dump(score_dict, file)
         print("COMPLETED")
@@ -640,4 +639,4 @@ if __name__ == "__main__":
 
     """WATCH DQN AGENT PLAY"""
     q_net_model  = "code/q_net_83500.h5" # insert the directory where the network model is saved
-    DQN_utils.watch_agent_play(q_net_model) 
+    DQN_test.watch_agent_play(q_net_model) 
