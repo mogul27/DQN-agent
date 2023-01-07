@@ -1,5 +1,4 @@
 import numpy as np
-import random
 from keras.models import Sequential
 from keras.layers import Dense, Flatten, Conv2D
 from keras.optimizers import Adam
