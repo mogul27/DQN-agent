@@ -1,5 +1,6 @@
 # Source code used during Reinforcement Learning project
 
+The below has been tested with Python version *Python 3.10.8*.
 To run the code you need to install the Arcade Learning Environment. The following should achieve this:
 
 Use pip or pip3 depending on environment.
@@ -10,7 +11,6 @@ Use pip or pip3 depending on environment.
 - pip install -U gym[atari,accept-rom-license,other]
 
 If the above pip install for gym does not work try:
-
 pip install -U "gym[atari,accept-rom-license,other]"
 
 The following code will confirm atari gym is installed OK:
