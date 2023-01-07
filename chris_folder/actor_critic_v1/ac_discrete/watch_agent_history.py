@@ -42,8 +42,8 @@ def main(num_actions: int=4, num_episodes: int=10, load_weights: bool=True,
 
     # Load previously trained weights
     if load_weights:
-        actor.load_network_weights(weights_path_override="GoldenRunWeights/atari_actor_weights3750.h5")
-        critic.load_network_weights(weights_path_override="GoldenRunWeights/atari_critic_weights3750.h5")
+        actor.load_network_weights(weights_path_override="atari_actor_weights3750.h5")
+        critic.load_network_weights(weights_path_override="atari_critic_weights3750.h5")
 
     # Hold episode rewards
     episode_rewards = []

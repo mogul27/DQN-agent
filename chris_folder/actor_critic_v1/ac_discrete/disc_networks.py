@@ -4,7 +4,6 @@ from keras.models import Sequential
 from keras.layers import Dense, Flatten, Conv2D
 from keras.optimizers import Adam
 from keras.initializers import GlorotNormal, RandomUniform
-import tensorflow_probability as tfp
 import keras.backend as backend
 
 
@@ -157,7 +156,6 @@ class Actor:
         state = np.expand_dims(state, axis=0)
         # Retrieve the probability distribution of actions for a given state
         softmax_probs = self.network.predict_on_batch(state)[0]
-        print(softmax_probs)
 
         # One hot encode the action taken from possible actions
         actual_action = np.zeros(num_actions)

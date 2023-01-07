@@ -1,6 +1,6 @@
-Episode: 1, Total Reward: 0.0, Steps: 124, 10-Window_Average: 1.0
- Episode: 2, Total Reward: 1.0, Steps: 169, 10-Window_Average: 1.0
- Episode: 3, Total Reward: 0.0, Steps: 123, 10-Window_Average: 1.0
- Episode: 4, Total Reward: 3.0, Steps: 247, 10-Window_Average: 1.0
- Episode: 5, Total Reward: 4.0, Steps: 297, 10-Window_Average: 1.0
- Episode: 6, Total Reward: 0.0, Steps: 124, 10-Window_Average: 1.0
+Episode: 1, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
+ Episode: 2, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
+ Episode: 3, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
+ Episode: 4, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
+ Episode: 5, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
+ Episode: 6, Total Reward: 0.0, Steps: 122, 10-Window_Average: 1.0
