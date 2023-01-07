@@ -1,6 +1,7 @@
 # Source code used during Reinforcement Learning project
 
 The below has been tested with Python version *Python 3.10.8*.
+
 To run the code you need to install the Arcade Learning Environment. The following should achieve this:
 
 Use pip or pip3 depending on environment.
