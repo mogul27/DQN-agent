@@ -62,10 +62,16 @@ Main source code is in
 
 ##### For below instructions, use python or python 3 command depending on environment set up.
 
-To train a new A2C agent, run *python discrete_atari_history.py*. The hyperparameters for training can be adjusted by editing the arguments passed into the function *main()* at the bottom of discrete_atari_history.py. As the agent trains, it will save reward, step and episode information to a new file it creates called atarirewards.txt. The agent will save weights for the actor and critic every 50 episodes into a new folder that it will create called GoldenRunWeights. Every 2000 episodes a plot will display the progress in training the agent.
+To train a new A2C agent, run *python discrete_atari_history.py*.
+
+The hyperparameters for training can be adjusted by editing the arguments passed into the function *main()* at the bottom of discrete_atari_history.py. As the agent trains, it will save reward, step and episode information to a new file it creates called atarirewards.txt. The agent will save weights for the actor and critic every 50 episodes into a new folder that it will create called GoldenRunWeights. Every 2000 episodes a plot will display the progress in training the agent.
+
 
 To watch an existing trained agent play Breakout, run *python watch_agent_history.py*. 
+
 This loads the actor and critic weights to play Breakout with an agent trained for 3750 episodes. By default, this agent plays the game for 5 episodes, reporting the score for each episode and the average score across the 5 episodes.
+
+
 
 ## Asynchronous n-step Q-Learning
 
