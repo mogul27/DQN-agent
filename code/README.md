@@ -5,7 +5,11 @@ To run the code you need to install the Arcade Learning Environment. The followi
 - pip install ale-py
 - pip install autorom
 - pip install -U gym
-- pip install -U gym[atari,accept-rom-license]
+- pip install -U gym[atari,accept-rom-license,other]
+
+If the above pip install for gym does not work try:
+
+pip install -U "gym[atari,accept-rom-license,other]"
 
 The following code will confirm atari gym is installed OK:
 
