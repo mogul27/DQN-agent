@@ -161,12 +161,12 @@ def main(gamma :float=0.99, actor_lr: float=0.001,
                 reward_txt.write("\n Episode: {}, Total Reward: {}, Steps: {}, {}-Window_Average: {}"
                 .format(episode_count, episode_reward, steps, window_size, running_average))
     
-        # save weights every 100 episodes
+        # save weights every 50 episodes
         if episode_count % 50 == 0:
             critic.save_network_weights(game_type="atari", episode=episode_count)
             actor.save_network_weights(game_type="atari", episode=episode_count)
 
-        # Every 1000 episodes display a plot of progress
+        # Every 2000 episodes display a plot of progress
         if episode_count % 2000 == 0:
             episode_axis = [i for i in range(episode_count)]
             plt.plot(episode_axis, window_average_list)
