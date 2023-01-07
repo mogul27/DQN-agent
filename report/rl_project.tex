@@ -75,10 +75,10 @@
 
 % A clear, precise and concise description of your chosen problem, including the states, actions, transition dynamics, and the reward function. You will lose marks for an unclear, incorrect, or incomplete problem definition.
 For this assignment, we chose to implement and train 3 different RL agents to play the game of Breakout, a 2D game part of the classic Atari 2600.
-In the game of Breakout, a player controls a paddle to bounce a ball against a wall composed by a stack of 6 layers of bricks without letting the ball fall behind the paddle. Each time the ball hits a brick, the brick is destroyed and the score is increasaed by 1,4 or 7 points, depending on the color of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
-Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right.
+In the game of Breakout, a player controls a paddle to bounce a ball against a wall composed by a stack of 6 layers of bricks without letting the ball fall behind the paddle. Each frame represents the environment state at step $t$. The reward is 0 for step $t$ unless a brick is destroyed. Each time the ball hits a brick, the brick is destroyed and the score is increased by 1,4 or 7 points, depending on the colour of the brick which was hit. If the ball falls behind the paddle one life is lost. The game ends when all 5 lives are lost.
+Four actions are available at each step $t$, namely, fire, no operation (noop), move left and move right. For Breakout v5, there is a 75\% chance that the environment accepts the action chosen at time $t$ and 25\% the action chosen at step $t-1$ is used. For v4, the environment always accepts the action.
 
-The agent has to learn to control the paddle to maximize the  total final reward, meaning hit and destroy as many bricks as possible within the 5 lives available. No points are removed when a life is lost. Although Breakout seems a conceptaully easy problem to solve, its vast state space proves very challening for RL methods. The agent needs to figure out which of the available actions is best to take in each state to maximize the future reward. For the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen.
+The agent must learn to control the paddle to maximise the total reward, meaning hit and destroy as many bricks as possible within 5 lives. No points are removed when a life is lost. Breakout's vast state space proves very challenging for RL methods. The agent needs to figure out which of the available actions is best to take in each state to maximise the future reward. For the scope of this assignment, we will only consider the single player version. The highest score achievable for one player is 864; this is done by eliminating two screens of bricks worth 432 points per screen. 
 
 \section{Background}
 
@@ -86,7 +86,7 @@ The agent has to learn to control the paddle to maximize the  total final reward
 
 \subsection{DQN}
 One category of reinforcement learning methods that can be used to solve the game of Breakout is value-based methods which use function approximation.
-These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and  $\theta \in \mathbb{R}^n$ to estimate the action-value functions for each state and therefore determine the optimal action $a$ to take in state $s$.
+These methods aim to learn a function $f: (s,a,\theta) \rightarrow \mathbb{R}$, with $s \in S$,  $a \in A$ and $\theta \in \mathbb{R}^n$ to estimate the action-value functions for each state and therefore determine the optimal action $a$ to take in state $s$.
 
 Deep Q-Network agent (DQN) introduced by Mnih et al., 2015, was the first value-based RL method to surpass human performances at Breakout making it the first candidate algorithm we decided to implement.
 Mnih et al., 2015 show how DQN was able to reach an average score of 401, compared to an average score of 31.8 reached in the same testing conditions by a professional human tester.
@@ -378,7 +378,7 @@ Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 202
 Narasimhan, K., Kulkarni, T. and Barzilay, R., 2015. Language Understanding for Text-based Games using Deep Reinforcement Learning. \emph{Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing} [Online], EMNLP 2015, Lisbon, Portugal. Lisbon, Portugal: Association for Computational Linguistics, pp.1–11. \\
 Available from: https://doi.org/10.18653/v1/D15-1001 [Accessed 3 January 2023].
 
-OpenAI. 2022. \emph{atari_preprocessing gym wrapper}. [computer program]. Available from: https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
+OpenAI. 2022. \emph{ataripreprocessing gym wrapper}. [computer program]. Available from: https://github.com/openai/gym/blob/master/gym/wrappers/ataripreprocessing.py
 
 Schaul, T., Quan, J., Antonoglou, I. and Silver, D., 2016. \emph{Prioritized Experience Replay}. \\
 Available from: http://arxiv.org/abs/1511.05952.
