@@ -156,7 +156,7 @@ DQN pseudo-code is shown in \nameref{dqn_pseudo}
 
 The second method chosen to solve our specific problem of Atari Breakout is Advantage Actor-Critic (A2C). In this implementation, the actor policy is parameterised by a CNN where the parameters are the weights of the neural network. The critic is also implemented as a CNN, with both architectures following a modified version of that used in Minh et al. (2015). For the Actor, the output layer uses a softmax activation function for the output layer with a single neuron for each possible action that the actor can take. This is to achieve a policy parameterisation known as softmax in action preferences (Sutton and Barto, 2018). The critic network uses the same architecture but has a single output neuron with linear activation, representing the action-value that the critic prescribes to a given state. RandomUniform initialisation is used with a small range of min and max values (0 - 0.02) as initial runs of the algorithm showed high sensitivity to initial weights on the output layers, particularly on the actor.
 
-The input to both networks is similar to that used for DQN, and, is implemented using an OpenAIGym provided Atari wrapper that follows the guidelines in Machado et al. (2018). The current and the 3 previous frames are stacked to give the agent context such as the direction the ball is travelling in.
+The input to both networks is similar to that used for DQN, and, is implemented using an OpenAIGym provided Atari wrapper (OpenAI, 2022) that follows the guidelines in Machado et al. (2018). The current and the 3 previous frames are stacked to give the agent context such as the direction the ball is travelling in.
 
 The critic uses a TD update. At each step, the critic network calculates a value estimate for both the previous state and the next-state that the agent is in. The critic uses a bootstrapped estimate of the next state, the reward at $t+1$ and the discount factor to calculate a target value for the state. The mean squared difference between the critic's initial value of the state and the target value is used to update the critic and adjust its estimate of the state closer to the target value. The target TD value is used also to calculate the advantage function for the actor loss by subtracting the critic's valuation of the previous state from the target TD update. The full A2C actor update rule from Yoon (2019) is given below:
 
@@ -377,6 +377,8 @@ Available from: https://doi.org/10.1038/nature14236. [Accessed 27th December 202
 
 Narasimhan, K., Kulkarni, T. and Barzilay, R., 2015. Language Understanding for Text-based Games using Deep Reinforcement Learning. \emph{Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing} [Online], EMNLP 2015, Lisbon, Portugal. Lisbon, Portugal: Association for Computational Linguistics, pp.1–11. \\
 Available from: https://doi.org/10.18653/v1/D15-1001 [Accessed 3 January 2023].
+
+OpenAI. 2022. \emph{atari_preprocessing gym wrapper}. [computer program]. Available from: https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
 
 Schaul, T., Quan, J., Antonoglou, I. and Silver, D., 2016. \emph{Prioritized Experience Replay}. \\
 Available from: http://arxiv.org/abs/1511.05952.
