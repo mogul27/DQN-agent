@@ -2,6 +2,8 @@
 
 To run the code you need to install the Arcade Learning Environment. The following should achieve this:
 
+Use pip or pip3 depending on environment.
+
 - pip install ale-py
 - pip install autorom
 - pip install -U gym
