@@ -1,10 +1,9 @@
 import gym
-from gym.wrappers.atari_preprocessing import AtariPreprocessing
 import numpy as np
 import tensorflow as tf
 from keras.losses import Huber
 from keras.optimizers import Adam
-from keras.models import Sequential, load_model     # ver 2.9.0
+from keras.models import load_model     # ver 2.9.0
 from keras.layers import Dense, Conv2D, Flatten, Input
 import cv2
 import time
@@ -634,9 +633,9 @@ if __name__ == "__main__":
     
     """TRAIN DQN AGENT FROM SCRATCH"""
     #env = gym.make('ALE/Breakout-v5', render_mode=None)
-    #agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING_LINEAR, memory_size=100000, save=False, verbose=1, folder="./")
-    #agent.train_by_frames(env,n_frames=10000000,batch_size=32)
+    #agent = DQN_Agent(eps_schema=Eps_Type.ANNEALING_LINEAR, memory_size=1000000, save=True, verbose=1, folder="./")
+    #agent.train_by_frames(env,n_frames=2000000,batch_size=32)
 
     """WATCH DQN AGENT PLAY"""
     q_net_model  = "code/q_net_83500.h5" # insert the directory where the network model is saved
-    DQN_test.watch_agent_play(q_net_model) 
+    DQN_test.watch_agent_play(q_net_model)
